@@ -1,0 +1,380 @@
+{
+  "quorum": {
+    "deep": [
+      {
+        "title": "Quorum math with worked examples",
+        "body": "N replicas, a write waits for W acks, a read contacts R replicas. If R + W > N, every read set overlaps every write set in at least one replica, so a read sees at least one copy of the latest acknowledged write (when versions are compared correctly).\n\nExamples with N = 3:\n\n- R = 2, W = 2: overlap of 1. Tolerates 1 node down for reads and writes. Balanced default.\n- R = 1, W = 3: fast reads, writes fail if any node is down.\n- R = 3, W = 1: fast writes, slow reads, reads fail if any node is down.\n- R = 1, W = 1: R + W = 2 <= 3, so stale reads are possible. Fastest, eventual.\n\nFault tolerance: writes survive N − W failures; reads survive N − R failures.\n\nLatency: an operation completes when the W-th (or R-th) fastest replica responds, so latency is an order statistic. Larger quorums raise tail latency.\n\nWhy R + W > N is not full linearizability: sloppy quorums and hinted handoff accept writes on nodes outside the preference list during failures; a write that reaches W nodes may later be overwritten by a concurrent write with an older timestamp (last-write-wins with clock skew); a read concurrent with a write can see new then old values on successive reads. Add read repair and real consensus if you need strict guarantees.\n\nConflict handling: version vectors (each replica increments its own counter; if neither vector dominates the other the writes are concurrent and both siblings are kept), dotted version vectors, or CRDTs. LWW by timestamp is simple but silently drops one of two concurrent writes."
+      },
+      {
+        "title": "Repair mechanisms in leaderless stores",
+        "body": "Read repair: when a read sees replicas disagree, the coordinator writes the newest version back to stale replicas.\n\nHinted handoff: if a replica is down during a write, another node stores a hint and delivers it when the replica returns. Improves write availability (sloppy quorum) but weakens the overlap guarantee.\n\nAnti-entropy: background comparison of replicas using Merkle trees (hash of hash ranges) to find and sync differing key ranges efficiently, transferring only the differences.\n\nTunable per request: Cassandra offers ONE, QUORUM, LOCAL_QUORUM (quorum within the local datacenter, avoiding cross-region latency), EACH_QUORUM, ALL. A common production setting is LOCAL_QUORUM for both reads and writes."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Quorum settings for N = 3",
+        "head": ["R", "W", "R + W > N?", "Reads see latest?", "Tolerates down for reads", "Tolerates down for writes"],
+        "rows": [
+          ["1", "1", "No (2)", "Not guaranteed", "2", "2"],
+          ["2", "2", "Yes (4)", "Yes (with versions)", "1", "1"],
+          ["1", "3", "Yes (4)", "Yes", "2", "0"],
+          ["3", "1", "Yes (4)", "Yes", "0", "2"]
+        ]
+      }
+    ]
+  },
+  "raft": {
+    "flows": [
+      {
+        "title": "Raft: election then replicated write",
+        "hint": "Five steps from a dead leader to a committed entry.",
+        "nodes": [
+          {"id": "f", "label": "Follower", "sub": "timeout fires", "icon": "💤"},
+          {"id": "c", "label": "Candidate", "sub": "term + 1", "icon": "🙋"},
+          {"id": "l", "label": "Leader", "icon": "👑"},
+          {"id": "q", "label": "Majority", "sub": "2 of 3", "icon": "✅"}
+        ],
+        "steps": [
+          {"at": "f", "note": "Follower hears no heartbeat for a randomized timeout (150-300 ms, randomized to avoid split votes)", "ms": 200, "tone": "warn"},
+          {"at": "c", "note": "It becomes a candidate, increments its term, votes for itself and asks the others for votes", "ms": 5},
+          {"at": "q", "note": "A node grants its vote once per term, only if the candidate's log is at least as up to date as its own", "ms": 5},
+          {"at": "l", "note": "With a majority of votes the candidate becomes leader and starts sending heartbeats", "ms": 5, "tone": "good"},
+          {"at": "l", "note": "Client write: leader appends the entry to its log and sends AppendEntries to followers", "ms": 2},
+          {"at": "q", "note": "A majority has stored the entry: it is committed. Leader applies it and replies to the client", "ms": 5, "tone": "good"},
+          {"at": "f", "note": "Followers learn the commit index in the next heartbeat and apply the entry to their state machines", "ms": 5}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "The three sub-problems of Raft",
+        "body": "Leader election: terms are logical clocks. Each node is follower, candidate or leader. A leader sends heartbeats; a follower that times out starts an election. A node votes at most once per term and only for a candidate whose log is at least as up to date (higher last term, or equal term and longer log). Randomized timeouts make split votes rare and quickly resolved. At most one leader per term because it needs a majority.\n\nLog replication: the leader appends client commands to its log and replicates with AppendEntries. Each message carries the index and term of the previous entry (consistency check). If a follower's log differs, the leader walks back to the last matching entry and overwrites the follower's conflicting suffix. An entry is committed once stored on a majority; the leader only counts replicas for entries of its own term (the safety rule that prevents committing old-term entries through a count alone).\n\nSafety: Leader Completeness (any committed entry is present in the log of every future leader) follows from the up-to-date vote rule plus majority overlap: a candidate cannot win without a vote from at least one node holding every committed entry.\n\nCluster sizing: a cluster of N = 2f + 1 nodes tolerates f failures. 3 nodes tolerate 1, 5 tolerate 2. Even sizes add cost without extra tolerance.\n\nPerformance: each write needs one round trip to a majority, so latency is the median replica's latency; batching and pipelining raise throughput. Linearizable reads need either going through the log, a read index (leader confirms leadership with a heartbeat round), or leader leases (relying on bounded clock drift).\n\nMembership changes and snapshots: reconfigure with joint consensus or single-server changes; compact the log with snapshots so it does not grow forever and new nodes can catch up."
+      },
+      {
+        "title": "Raft vs Paxos vs ZAB, and where consensus is used",
+        "body": "Paxos: the original, proven protocol; notoriously hard to implement fully (multi-Paxos details are underspecified). Raft was designed for understandability with the same guarantees. ZAB (ZooKeeper) is similar to Raft with primary-backup ordering semantics.\n\nUsed for: metadata and coordination stores (etcd for Kubernetes, ZooKeeper, Consul), distributed databases per shard or range (Spanner uses Paxos groups, CockroachDB and TiKV use Raft per range), leader election, distributed locks and configuration.\n\nNot used for: bulk data paths with huge throughput without sharding the groups; cross-continent synchronous writes unless you accept 100+ ms commit latency. Multi-Raft shards the data across many small Raft groups to scale."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Consensus systems",
+        "head": ["System", "Protocol", "Typical size", "Used for", "Notes"],
+        "rows": [
+          ["etcd", "Raft", "3-5", "Kubernetes state, config", "Linearizable KV with watch"],
+          ["ZooKeeper", "ZAB", "3-5", "Coordination, locks, leader election", "Older, widely deployed"],
+          ["Consul", "Raft", "3-5", "Service discovery, config", "Gossip plus Raft"],
+          ["Spanner", "Paxos groups + TrueTime", "Many groups", "Global SQL database", "External consistency using synchronized clocks"],
+          ["CockroachDB / TiKV", "Raft per range", "Many groups", "Distributed SQL / KV", "Multi-Raft"]
+        ]
+      }
+    ]
+  },
+  "cap-theorem": {
+    "deep": [
+      {
+        "title": "What CAP actually says (and PACELC)",
+        "body": "Consistency here means linearizability. Availability means every request to a non-failing node gets a non-error response. Partition tolerance means the system keeps operating when the network drops messages between nodes. Since partitions happen in real networks, the real choice is: during a partition, give up consistency (answer, maybe stale: AP) or availability (refuse or wait: CP).\n\nCommon mistakes: treating it as 'pick 2 of 3' (you cannot choose to forgo partitions), labeling whole databases, or applying it to a single node.\n\nPACELC extends it: if there is a Partition choose between Availability and Consistency; Else (normal operation) choose between Latency and Consistency. Even with no partition, replicating synchronously for consistency costs latency. Examples: Dynamo/Cassandra are PA/EL by default; Spanner and most consensus systems are PC/EC; MongoDB defaults are PA/EC in some configurations; many relational primary-replica setups are PC/EC for the primary and EL when reading from async replicas.\n\nHow to answer in an interview: pick per feature. Payments and inventory decrement: CP behavior (reject or queue if not sure). Feed, likes, presence: AP behavior (serve something). Then name the mechanism (quorum, leader with sync follower, CRDT) and what the user sees during a partition."
+      }
+    ],
+    "compare": [
+      {
+        "title": "CAP / PACELC classification (typical defaults)",
+        "head": ["System", "During partition", "Normal operation", "Notes"],
+        "rows": [
+          ["Cassandra / DynamoDB (default)", "Available (AP)", "Low latency (EL)", "Tunable with quorums"],
+          ["Spanner / etcd / ZooKeeper", "Consistent (CP)", "Consistent (EC)", "Pay commit latency"],
+          ["Postgres primary + async replicas", "Primary CP for writes", "Latency: replica reads stale", "Depends on setup"],
+          ["Redis cache", "Typically available", "Low latency", "Not a source of truth"]
+        ]
+      }
+    ]
+  },
+  "saga": {
+    "flows": [
+      {
+        "title": "Order saga with compensation",
+        "hint": "Payment fails at step 3, earlier steps are undone in reverse.",
+        "nodes": [
+          {"id": "o", "label": "Create order", "icon": "🧾"},
+          {"id": "i", "label": "Reserve stock", "icon": "📦"},
+          {"id": "p", "label": "Charge payment", "icon": "💳"},
+          {"id": "s", "label": "Ship", "icon": "🚚"}
+        ],
+        "steps": [
+          {"at": "o", "note": "T1: order created in PENDING state (local transaction commits)", "ms": 5, "tone": "good"},
+          {"at": "i", "note": "T2: stock reserved (reservation row with expiry)", "ms": 8, "tone": "good"},
+          {"at": "p", "note": "T3: payment declined. The saga cannot continue", "ms": 120, "tone": "bad"},
+          {"at": "i", "note": "C2: compensate by releasing the reservation (idempotent)", "ms": 8, "tone": "warn"},
+          {"at": "o", "note": "C1: mark the order CANCELLED and notify the customer. The final state is consistent", "ms": 5, "tone": "warn"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Orchestration vs choreography, and designing the steps",
+        "body": "Orchestration: a central coordinator (a workflow engine like Temporal, Step Functions or a saga table) tells each service what to do and records state. Easy to see the whole flow, handle timeouts and retries, and add steps; the orchestrator is an extra component that must be highly available and must not contain business logic that belongs in services.\n\nChoreography: services react to each other's events. No central point, loose coupling, but the flow is implicit across services, hard to trace, and cyclic dependencies creep in. Fine for 2 or 3 steps.\n\nStep design rules:\n\n- Every step has a compensating action (or is the last step). Compensation is a semantic undo (refund, release), not a database rollback; the intermediate state was visible to others.\n- Steps and compensations must be idempotent and retriable until success.\n- Order steps so that the hardest-to-undo or most likely to fail comes early, and irreversible ones (sending an email, shipping) come last. A pivot transaction is the point after which the saga must go forward.\n- Use semantic locks and pending states (PENDING, RESERVED) so other transactions see in-progress data correctly.\n- Persist saga state before each step so a crash resumes instead of starting over; handle a timeout as failure with compensation.\n\nIsolation problems (no ACID I): lost updates, dirty reads and non-repeatable reads across saga steps. Countermeasures: semantic locks, commutative updates, version checks, reread values, and putting the risky step first."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Distributed transaction approaches",
+        "head": ["Approach", "Atomicity", "Isolation", "Availability", "Complexity", "Use when"],
+        "rows": [
+          ["Two-phase commit", "All or nothing", "Strong (locks held)", "Blocks if the coordinator dies", "Medium", "Few homogeneous databases, short transactions"],
+          ["Saga", "Eventual via compensation", "None (visible intermediate states)", "High", "Higher (undo logic)", "Microservices, long business flows"],
+          ["Outbox + idempotent consumers", "Eventual delivery", "Per service", "High", "Low-medium", "Propagating one service's change"],
+          ["Single database transaction", "ACID", "Configurable", "Single point", "Lowest", "Everything fits in one DB: prefer this"]
+        ]
+      }
+    ]
+  },
+  "consistency-models": {
+    "compare": [
+      {
+        "title": "Consistency models and isolation anomalies",
+        "head": ["Model / level", "Guarantee", "Anomalies still possible", "Cost", "Example"],
+        "rows": [
+          ["Linearizable", "Single-copy, real-time order", "None", "Highest latency, lower availability", "etcd, Spanner, leader reads"],
+          ["Sequential", "One global order, not real-time", "Stale reads vs wall clock", "High", "ZooKeeper reads"],
+          ["Causal", "Cause precedes effect", "Concurrent writes seen in different orders", "Medium", "Some geo-replicated stores"],
+          ["Read-your-writes / monotonic", "Per-session guarantees", "Others may see older data", "Low", "Sticky sessions, session tokens"],
+          ["Eventual", "Replicas converge", "Anything in between", "Lowest", "DNS, Cassandra ONE, caches"],
+          ["Read committed (isolation)", "No dirty reads", "Non-repeatable reads, write skew, phantoms", "Low", "Postgres default"],
+          ["Snapshot / repeatable read", "Consistent snapshot per transaction", "Write skew", "Medium", "Postgres repeatable read, MySQL InnoDB"],
+          ["Serializable", "As if run one at a time", "None", "Highest (aborts or locks)", "Postgres SSI, Spanner"]
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Isolation anomalies with examples",
+        "body": "Dirty read: reading uncommitted data of another transaction (prevented by read committed and above).\n\nNon-repeatable read: read a row twice and it changed in between (prevented by snapshot isolation).\n\nPhantom: re-running a range query returns new rows (prevented by serializable, or by snapshot isolation for reads).\n\nLost update: two transactions read-modify-write the same value and one write is overwritten. Fix: atomic update (SET x = x + 1), SELECT ... FOR UPDATE, or compare-and-set with a version column.\n\nWrite skew: two transactions read overlapping data, make disjoint writes based on it and together break an invariant (two on-call doctors both go off-call; two bookings for the same room slot). Snapshot isolation allows it. Fix: serializable isolation, SELECT FOR UPDATE on the rows read, or a database constraint.\n\nHow serializability is implemented: two-phase locking (pessimistic, readers block writers), serial execution (single thread per partition, as in Redis or VoltDB), or serializable snapshot isolation (optimistic, detect dangerous patterns and abort one transaction, as in Postgres). Under SSI clients must retry aborted transactions."
+      }
+    ]
+  },
+  "contention": {
+    "deep": [
+      {
+        "title": "Locking strategies compared",
+        "body": "Atomic conditional update: UPDATE inventory SET qty = qty - 1 WHERE sku = ? AND qty > 0, then check rows affected. One statement, no lock held by the client, no race. Best first choice for counters and stock.\n\nPessimistic locking: SELECT ... FOR UPDATE locks the row until commit. Safe under high contention; holds locks (blocking, deadlock risk, lower throughput). Keep transactions short and always lock in a consistent order.\n\nOptimistic concurrency control: read a version, write with WHERE version = ?; if 0 rows updated, retry. No locks; wasted work under contention, so use when conflicts are rare.\n\nDistributed lock (Redis SET NX PX, ZooKeeper, etcd): mutual exclusion across processes. Always set a lease/TTL so a dead holder releases it. A paused holder can wake after its lease expired and still write, so protect the resource with a fencing token (a monotonically increasing number the resource checks and rejects if stale). Redlock's safety is debated; for correctness use a consensus-backed lock with fencing.\n\nSingle-writer queue: serialize all updates for a key through one consumer (partition by key). Removes contention entirely at the cost of latency and a queue.\n\nDeadlocks: two transactions wait on each other. Databases detect and abort one; prevent by lock ordering, timeouts and short transactions."
+      },
+      {
+        "title": "Hot rows and high-contention counters",
+        "body": "A single row updated thousands of times per second serializes on its lock. Options: shard the counter into N rows (increment a random one, sum on read), buffer increments in memory or a queue and flush batches, use a counter service, or accept approximate counts (probabilistic counters).\n\nFlash sale pattern: put a virtual waiting room or queue in front, admit users at a rate the inventory service can handle, reserve stock with expiring holds, confirm on payment, release on expiry. Avoids a thundering herd on one hot row."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Concurrency control options",
+        "head": ["Technique", "Blocks others?", "Best when", "Failure risk", "Cost"],
+        "rows": [
+          ["Atomic conditional update", "Briefly (row lock inside statement)", "Counters, stock", "Low", "Lowest"],
+          ["Pessimistic lock (FOR UPDATE)", "Yes", "High contention, short critical section", "Deadlocks, lock waits", "Medium"],
+          ["Optimistic (version check)", "No", "Rare conflicts", "Retry storms under contention", "Low"],
+          ["Distributed lock with fencing", "Yes", "Cross-service critical sections", "Lease expiry races without fencing", "High"],
+          ["Single-writer partition", "Serializes by key", "Per-entity ordering", "Hot key latency", "Medium"]
+        ]
+      }
+    ]
+  },
+  "circuit-breaker": {
+    "flows": [
+      {
+        "title": "Circuit breaker state machine",
+        "hint": "Closed, Open, Half-open.",
+        "nodes": [
+          {"id": "closed", "label": "Closed", "sub": "calls pass", "icon": "🟢"},
+          {"id": "open", "label": "Open", "sub": "fail fast", "icon": "🔴"},
+          {"id": "half", "label": "Half-open", "sub": "probe", "icon": "🟡"}
+        ],
+        "steps": [
+          {"at": "closed", "note": "Normal: calls flow, failures and slow calls are counted in a sliding window", "ms": 0},
+          {"at": "closed", "note": "Failure rate exceeds the threshold (for example 50% of the last 20 calls, minimum 10 calls)", "ms": 0, "tone": "warn"},
+          {"at": "open", "note": "Breaker opens. Callers get an immediate error or fallback; the sick dependency gets breathing room", "ms": 0, "tone": "bad"},
+          {"at": "half", "note": "After the cooldown (for example 30 s) a few trial calls are allowed", "ms": 0, "tone": "warn"},
+          {"at": "closed", "note": "Trial calls succeed: breaker closes and traffic resumes. If they fail it reopens and the cooldown restarts", "ms": 0, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Tuning and the resilience toolbox",
+        "body": "Parameters: failure-rate threshold (or consecutive failures), minimum calls before judging (avoid opening on 1 of 2), sliding window (count-based or time-based), slow-call threshold (treat latency above X as failure), open-state wait, and the number of half-open probe calls.\n\nWhat counts as failure: timeouts, 5xx, connection errors; not 4xx caused by caller mistakes.\n\nCompanions:\n\n- Timeouts: every call has one; they define what 'slow' means.\n- Bulkheads: separate thread pools, connection pools or semaphores per dependency so one slow dependency cannot use all capacity.\n- Retries with backoff and jitter, inside the breaker, with a retry budget.\n- Fallbacks: cached or default data, a degraded feature, or a queued write. Decide what the user sees when open.\n- Load shedding and rate limits on the server side.\n\nPer-instance vs shared state: each client instance usually keeps its own breaker (no shared dependency); for sidecars and meshes (Envoy outlier detection) ejection decisions are made per upstream host.\n\nObservability: emit state changes and rejected-call counts, alert when a breaker is open, and dashboard them next to the dependency's error rate."
+      }
+    ]
+  },
+  "retry-storm": {
+    "deep": [
+      {
+        "title": "Backoff formulas and retry amplification",
+        "body": "Exponential backoff: delay = min(cap, base × 2^attempt). Without randomness, clients that failed together retry together.\n\nJitter strategies (AWS Architecture Blog analysis):\n\n- Full jitter: sleep = random(0, min(cap, base × 2^attempt)). Fewest total calls and best spreading; the default recommendation.\n- Equal jitter: sleep = half + random(0, half).\n- Decorrelated jitter: sleep = min(cap, random(base, previous_sleep × 3)).\n\nAmplification: with k attempts per layer and d layers, one user request can become k^d downstream requests (3 layers × 3 attempts = 27). Retry at one layer only, usually the edge, and use a retry budget (for example retries may add at most 10% extra load, tracked as a token bucket refilled by successes).\n\nDeadline propagation: pass the remaining time budget downstream (gRPC deadlines), so a request that cannot finish in time is dropped instead of doing wasted work.\n\nIdempotency: retry only operations that are safe to repeat or carry an idempotency key.\n\nServer protections: load shedding (reject early when queue time exceeds a limit, return 503 with Retry-After), adaptive concurrency limits, and admission control by priority so critical traffic survives. Hedged requests (send a second copy after the p95 latency) reduce tail latency but add load, so budget them too."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Backoff strategies",
+        "head": ["Strategy", "Formula", "Spreading", "Total calls", "Use"],
+        "rows": [
+          ["No backoff", "retry immediately", "None", "Highest", "Never"],
+          ["Exponential", "base × 2^n", "None (synchronized)", "Medium", "Only with jitter"],
+          ["Full jitter", "random(0, base × 2^n)", "Best", "Lowest", "Default choice"],
+          ["Equal jitter", "d/2 + random(0, d/2)", "Good", "Low", "When a minimum wait is needed"],
+          ["Decorrelated jitter", "random(base, 3 × prev)", "Very good", "Low", "Long-running retry loops"]
+        ]
+      }
+    ]
+  },
+  "token-bucket": {
+    "deep": [
+      {
+        "title": "Choosing B and r, and variable cost",
+        "body": "To enforce 'L requests per W seconds on average with bursts up to B': set r = L / W and capacity B. B = L gives a window-like behavior with refill; B = 1 gives smooth pacing (one request every 1/r seconds); a larger B tolerates spikier clients.\n\nExample: 100 requests/minute, burst 20: r = 100/60 = 1.67 tokens/s, B = 20. A client idle for 12 seconds has 20 tokens, can fire 20 at once, then gets one every 0.6 s.\n\nVariable cost: charge cost tokens per request (search = 5, read = 1, LLM call = estimated tokens / 1000). The bucket then limits resource consumption, not just request count.\n\nHierarchical buckets: charge several buckets at once (per-user, per-tenant, global) and allow only if all pass; refund earlier buckets if a later one rejects.\n\nImplementation tips: store floats or use integer micro-tokens; refill lazily on access, never with a timer per key; set a TTL on idle keys; return the wait time for Retry-After."
+      }
+    ]
+  },
+  "load-balancer": {
+    "deep": [
+      {
+        "title": "Algorithms and when each fails",
+        "body": "Round robin: next server in turn. Ignores load, so long requests pile up on unlucky servers. Weighted round robin handles unequal machines.\n\nRandom: simple; with many requests approaches even load but has variance.\n\nLeast connections: send to the server with the fewest open connections. Adapts to slow requests; needs connection tracking.\n\nPower of two choices: pick two servers at random and send to the less loaded. Gives an exponential improvement in maximum load over pure random with almost no coordination; used widely at scale.\n\nLeast response time / peak EWMA: weight by observed latency.\n\nIP/consistent hash: same client or key to same server; gives affinity and cache locality; bounded-load variants cap overload.\n\nHealth: active checks (probe endpoints), passive checks (eject on errors, outlier detection), slow start for new servers, connection draining on removal.\n\nLayers: L4 (TCP/UDP, fast, no HTTP awareness) vs L7 (routes by path/header, terminates TLS, retries, canary weights). Global load balancing: DNS (GeoDNS, latency-based routing; TTL delays failover), anycast (same IP announced from many sites, routed by BGP).\n\nHigh availability: LB pairs with VRRP/floating IP or managed LBs; never a single instance."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Load balancing algorithms",
+        "head": ["Algorithm", "State needed", "Handles uneven requests", "Affinity", "Weakness"],
+        "rows": [
+          ["Round robin", "Counter", "No", "No", "Long requests pile up"],
+          ["Weighted round robin", "Counter + weights", "Partly (by capacity)", "No", "Static weights"],
+          ["Least connections", "Connection counts", "Yes", "No", "Counts do not equal cost"],
+          ["Power of two choices", "Load of 2 sampled servers", "Yes", "No", "Needs load info"],
+          ["Consistent hash", "Ring", "No", "Yes", "Hot keys, uneven load"],
+          ["Peak EWMA / least latency", "Latency stats", "Yes", "No", "Noisy measurements"]
+        ]
+      }
+    ]
+  },
+  "fanout": {
+    "deep": [
+      {
+        "title": "Fan-out math and the hybrid design",
+        "body": "Fan-out on write cost: writes per post = number of followers F. At 100 posts/s and average F = 200 that is 20,000 timeline inserts/s, fine. One celebrity with F = 50 million posting once causes 50 million inserts: at 100k inserts/s that takes 500 seconds and floods the system. Fan-out on read cost: read must query the recent posts of every followee (say 300) and merge: 300 lookups per timeline load.\n\nHybrid: push for authors with F below a threshold (for example 10,000), pull for the rest. On read, merge the precomputed timeline (a capped list, say the last 800 post ids in Redis) with recent posts of the few celebrities the user follows, then rank.\n\nStorage: timeline entry = (post_id, score). 800 entries × 16 bytes × 500M users = 6.4 TB, so skip inactive users (build their timeline lazily on next login) and cap lengths.\n\nOther details: store post bodies once and hydrate by id; use queues to fan out asynchronously and rate limit fan-out workers; handle deletes with tombstones and filter at read; rank with a feature store; use cursor pagination for stable scrolling.\n\nSame pattern elsewhere: notifications, activity feeds, chat group delivery, webhooks to many subscribers."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Feed strategies",
+        "head": ["Strategy", "Write cost", "Read cost", "Freshness", "Best for", "Problem"],
+        "rows": [
+          ["Fan-out on write (push)", "O(followers) per post", "O(1)", "Precomputed, near real-time", "Normal users", "Celebrity writes explode"],
+          ["Fan-out on read (pull)", "O(1)", "O(followees) merge", "Always fresh", "Celebrities, low read volume", "Slow reads"],
+          ["Hybrid", "Push for small authors", "Merge a few pulls", "Fresh", "Large social products", "More complex"]
+        ]
+      }
+    ]
+  },
+  "proximity": {
+    "deep": [
+      {
+        "title": "Geohash, quadtree, S2 and H3 in detail",
+        "body": "Geohash: interleaves latitude and longitude bits and encodes them in base32. Longer prefix means a smaller cell (5 chars about 4.9 km × 4.9 km, 6 chars about 1.2 km × 0.6 km, 7 chars about 150 m). Points sharing a prefix are near, so a prefix range scan on an ordinary index finds candidates. Boundary issue: two close points can have different prefixes, so query the cell and its 8 neighbors, then filter by true distance (haversine).\n\nQuadtree: recursively split a square into four children when it holds more than K points. Dense areas get deep, small cells; sparse areas stay coarse. Search descends to the query point and expands to neighbors. Lives in memory; shard by region and rebuild or update incrementally.\n\nS2 (Google): maps the sphere onto a cube and uses a Hilbert curve to order cells, giving cells of near-uniform size at each of 30 levels and a 64-bit cell id; good locality and region covering.\n\nH3 (Uber): hexagonal grid; each cell has 6 equidistant neighbors, which makes radius queries and smoothing simple.\n\nHaversine distance: a = sin²(Δφ/2) + cos φ1 × cos φ2 × sin²(Δλ/2); d = 2R × asin(sqrt(a)) with R = 6371 km.\n\nRide-hailing design: drivers send a location every 3-5 seconds; store the latest position per driver in Redis (geo commands or cell sets with TTL); matching queries cell and neighbors, filters by availability, ranks by ETA from a routing service. Never write every ping to the primary database; stream them to Kafka for analytics."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Geo index options",
+        "head": ["Index", "Cell shape", "Strength", "Weakness", "Used by"],
+        "rows": [
+          ["Geohash", "Rectangles, uneven at poles", "Works with any ordered index", "Boundary effects", "Redis GEO, Elasticsearch"],
+          ["Quadtree", "Adaptive squares", "Handles density skew", "In-memory structure to maintain", "Yelp-style search, games"],
+          ["S2", "Near-uniform spherical cells", "Great covering and locality", "More complex API", "Google Maps, MongoDB"],
+          ["H3", "Hexagons", "Uniform neighbor distance", "Hex rounding at pentagons", "Uber analytics and matching"],
+          ["R-tree / PostGIS", "Bounding rectangles", "Exact geometry queries", "Single-node unless sharded", "PostGIS, SQLite R*Tree"]
+        ]
+      }
+    ]
+  },
+  "realtime": {
+    "deep": [
+      {
+        "title": "Choosing the transport and scaling connections",
+        "body": "Short polling: client asks every N seconds. Simple, wasteful, latency up to N.\n\nLong polling: server holds the request until data arrives or a timeout. Near real-time with plain HTTP; reconnect overhead.\n\nServer-sent events (SSE): one-way server to client over HTTP, automatic reconnect with Last-Event-ID, great for notifications and LLM token streaming; works through most proxies; browsers limit connections per domain on HTTP/1.1.\n\nWebSocket: full-duplex over a single TCP connection after an HTTP upgrade. Best for chat, multiplayer, collaboration. Needs heartbeats, backoff-on-reconnect, sticky routing or a pub/sub layer, and care with proxies and load balancers.\n\nWebRTC: peer-to-peer media and data over UDP with STUN/TURN for NAT traversal; for voice and video.\n\nScaling connection servers: each connection costs memory (roughly 10-50 KB tuned) and a file descriptor; a tuned node can hold hundreds of thousands. Keep the connection tier thin: authenticate, subscribe to channels, push. Route messages with pub/sub (Redis, NATS, Kafka): the sender publishes to a channel and every connection server with subscribers delivers. Keep a presence map (user to connection server) with TTL refreshed by heartbeats.\n\nReliability: assign each message a per-channel sequence number; clients ack and resume from last seen sequence after reconnect; dedupe by message id; reconnect with exponential backoff and jitter so a deploy does not cause a thundering herd; drain connections gracefully on deploy."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Real-time transports",
+        "head": ["Transport", "Direction", "Overhead", "Proxy friendly", "Best for"],
+        "rows": [
+          ["Short polling", "Client pull", "High", "Yes", "Rare updates, simplicity"],
+          ["Long polling", "Server hold", "Medium", "Yes", "Fallback, moderate rates"],
+          ["SSE", "Server to client", "Low", "Mostly", "Notifications, token streaming"],
+          ["WebSocket", "Both ways", "Low", "Needs care", "Chat, collaboration, games"],
+          ["WebRTC", "Peer to peer (UDP)", "Lowest latency", "Needs STUN/TURN", "Voice, video"]
+        ]
+      }
+    ]
+  },
+  "id-generation": {
+    "deep": [
+      {
+        "title": "Snowflake layout and capacity math",
+        "body": "64-bit id: 1 sign bit (unused), 41 bits timestamp in milliseconds since a custom epoch, 10 bits machine/worker id, 12 bits sequence.\n\nCapacity: 2^41 ms is about 69.7 years of ids per epoch. 12 sequence bits give 4,096 ids per millisecond per worker, about 4.1 million per second per worker. 10 worker bits allow 1,024 workers, so cluster-wide throughput reaches about 4 billion ids per second.\n\nWorker id assignment: from a coordination service (ZooKeeper/etcd lease) or config; two workers sharing an id produce duplicates, so assign carefully and handle restarts.\n\nClock issues: NTP can step the clock back. Strategies: refuse to generate until the clock catches up; keep using the last timestamp and increment the sequence; or fail loudly. Monitor drift.\n\nOrdering: ids are roughly time-sorted across workers (ordering within the same millisecond across workers is arbitrary), which gives index locality and lets you sort by id instead of by timestamp.\n\nUUID options: v4 is 122 random bits (collision odds negligible, poor B-tree locality); v7 puts a 48-bit unix ms timestamp first then random bits (sortable, locality); ULID is a 48-bit time plus 80 random bits in a 26-char base32 string.\n\nBase62 short codes: 62^7 is about 3.5 trillion, enough for most URL shorteners with 7 characters. Encode a unique counter or Snowflake id; do not truncate hashes without handling collisions."
+      }
+    ],
+    "compare": [
+      {
+        "title": "ID generation strategies",
+        "head": ["Strategy", "Size", "Sortable", "Coordination", "Weakness"],
+        "rows": [
+          ["DB auto-increment", "32/64 bit", "Yes", "Central DB", "Bottleneck, leaks volume"],
+          ["UUIDv4", "128 bit", "No", "None", "Index fragmentation, size"],
+          ["UUIDv7 / ULID", "128 bit", "Time-ordered", "None", "Leaks creation time"],
+          ["Snowflake", "64 bit", "Roughly time-ordered", "Worker id assignment", "Clock drift handling"],
+          ["Ticket server / ranges", "64 bit", "Per block", "Allocator service", "Allocator is a dependency"]
+        ]
+      }
+    ]
+  },
+  "cdc-outbox": {
+    "flows": [
+      {
+        "title": "Transactional outbox end to end",
+        "hint": "One database transaction, then a relay, then idempotent consumers.",
+        "nodes": [
+          {"id": "svc", "label": "Service", "icon": "⚙️"},
+          {"id": "db", "label": "DB", "sub": "orders + outbox", "icon": "🗄️"},
+          {"id": "relay", "label": "Relay / CDC", "icon": "📡"},
+          {"id": "bus", "label": "Broker", "icon": "📬"},
+          {"id": "cons", "label": "Consumer", "sub": "idempotent", "icon": "📥"}
+        ],
+        "steps": [
+          {"at": "svc", "note": "Handle 'place order'", "ms": 0},
+          {"at": "db", "note": "In ONE transaction: insert the order row and an OrderPlaced row into the outbox table. Both commit or neither does", "ms": 8, "tone": "good"},
+          {"at": "relay", "note": "Relay polls unsent outbox rows (or Debezium reads the WAL) and publishes them", "ms": 50},
+          {"at": "bus", "note": "Event appended to the topic keyed by order_id. If the relay crashes after publishing but before marking sent, it republishes: duplicates are possible", "ms": 5, "tone": "warn"},
+          {"at": "cons", "note": "Consumer checks a processed-events table in the same transaction as its effect, so a duplicate is ignored", "ms": 10, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Idempotency in detail",
+        "body": "API idempotency keys: the client generates a unique key per logical operation (a UUID) and sends it with each retry. The server, in one transaction, inserts (key, request_hash, status) with a unique constraint, performs the work, and stores the response. A duplicate request finds the key and returns the stored response; the same key with a different request body is rejected. Concurrent duplicates: the unique insert makes one proceed and the other wait or get 409. Expire keys after a window (24 hours is common).\n\nConsumer idempotency: store processed message ids with the effect in the same transaction; or make the effect naturally idempotent (upsert by id, set-to-value instead of increment, version checks).\n\nOrdering: events for one entity must be applied in order; key by entity id. Include a version or sequence number and ignore stale events.\n\nOutbox operations: relay by polling (SELECT ... WHERE sent = false ORDER BY id LIMIT n FOR UPDATE SKIP LOCKED) scales across several relays; clean up sent rows on a schedule; monitor outbox age as an SLI.\n\nCDC details: Debezium on Postgres reads the logical replication stream via a replication slot (watch for slots retaining WAL when the connector is down); emits before/after row images; handle schema evolution with a schema registry; initial snapshot then streaming."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Keeping systems in sync",
+        "head": ["Approach", "Atomic with DB write?", "Delivery", "Coupling", "Notes"],
+        "rows": [
+          ["Dual write", "No", "May lose or duplicate", "Low", "Avoid"],
+          ["Transactional outbox", "Yes", "At-least-once", "Explicit events", "Extra table and relay"],
+          ["CDC on tables", "Yes (reads the log)", "At-least-once, ordered per row", "Couples to schema", "No app change"],
+          ["Event sourcing", "Events are the source", "Replayable", "High", "Different programming model"],
+          ["Two-phase commit", "Yes", "Exactly (blocking)", "High", "Rarely available across DB and broker"]
+        ]
+      }
+    ]
+  }
+}

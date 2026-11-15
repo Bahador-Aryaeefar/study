@@ -1,0 +1,342 @@
+[
+  {
+    "id": "sd-db-cpu",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "The primary database is at 100% CPU and the site is slow",
+    "situation": "Pager fires: p99 latency tripled, the primary Postgres shows 100% CPU, replicas look fine.",
+    "steps": [
+      {"label": "First 5 minutes: stabilize and communicate", "items": ["Declare the incident, name an incident commander, post a status note.", "Check what changed in the last hour: deploy, feature flag, migration, traffic spike, cron job.", "If a deploy or flag lines up, roll it back first and investigate after; rollback is the cheapest mitigation."]},
+      {"label": "Diagnose with data", "items": ["Look at active queries (pg_stat_activity) and top statements by total time (pg_stat_statements): one new or regressed query usually dominates.", "Check for lock waits, long transactions and autovacuum storms; check connection count (a connection leak makes CPU context-switch).", "Compare QPS and cache hit rate to normal: a cache outage turns reads into DB load."]},
+      {"label": "Mitigate fast", "items": ["Kill or cancel the runaway query; add statement_timeout to cap damage.", "Route read traffic to replicas, enable or warm the cache, shed low-priority traffic (rate limit batch jobs and crawlers).", "Add a missing index concurrently (CREATE INDEX CONCURRENTLY) if the plan shows a sequential scan; scale the instance up as a last resort."]},
+      {"label": "Fix the root cause", "items": ["Fix the query or ORM pattern (N+1, missing LIMIT, function on indexed column), add the index, review the plan with EXPLAIN (ANALYZE).", "Add caching or a read model for the hot read."]},
+      {"label": "Prevent recurrence", "items": ["Slow-query alerts, query review in CI for new queries, load tests on realistic data volume, connection pooler (PgBouncer), per-tenant and per-job rate limits.", "Blameless postmortem with a timeline and tracked action items."]}
+    ],
+    "followups": [
+      {"q": "You cannot find a recent deploy. What next?", "a": "Look for data-dependent causes: a table that crossed a size threshold so the planner switched plans, stale statistics (run ANALYZE), a tenant with unusual data, a batch job, or traffic from a new client. Compare pg_stat_statements snapshots from before and during the incident."},
+      {"q": "Why not just scale the database up?", "a": "It can buy time but hides the cause, costs money, may require downtime, and the problem returns with growth. Use it as a bridge while you fix the query or add capacity safely."}
+    ]
+  },
+  {
+    "id": "sd-cache-collapse",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "Cache hit rate collapsed and the database is melting",
+    "situation": "Redis was restarted (or failed over) and every request now misses; DB load is 10x normal.",
+    "steps": [
+      {"label": "First 5 minutes", "items": ["Confirm: cache hit rate graph, Redis memory and evictions, DB QPS. Stop any deploy in progress.", "Protect the database before anything else: it is the system of record and must not fall over."]},
+      {"label": "Mitigate", "items": ["Enable load shedding: reject or degrade low-priority requests, serve stale or default data where acceptable.", "Turn on request coalescing (single-flight) so many misses for one key become one DB query.", "Lower concurrency to the DB with a connection limit and a circuit breaker; ramp traffic back gradually."]},
+      {"label": "Warm the cache deliberately", "items": ["Pre-load the hottest keys from a snapshot or from top-N queries instead of letting users do it.", "Stagger TTLs with jitter so keys do not all expire together afterwards."]},
+      {"label": "Fix and prevent", "items": ["Redis replicas with automatic failover and persistence (RDB/AOF) so a restart is not cold; consider a local in-process cache as a second layer.", "Game-day test: kill the cache in staging and verify the DB survives; add a DB-side rate limit and alert on hit-rate drops."]}
+    ],
+    "followups": [
+      {"q": "How would you design so a cache failure never takes down the DB?", "a": "Treat the cache as an optimization the database can survive without: size the DB for peak misses at a degraded level, add single-flight, a circuit breaker with fallback, per-endpoint rate limits, and serve-stale. Test it regularly."}
+    ]
+  },
+  {
+    "id": "sd-p99-spike",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "p99 latency doubled but the average looks fine",
+    "situation": "Users complain about slow pages. Dashboards show mean latency flat, p99 rising.",
+    "steps": [
+      {"label": "Frame the problem", "items": ["Tail latency means a subset of requests is slow: find what is different about them (endpoint, tenant, region, instance, payload size, cache miss).", "Check saturation signals: CPU, GC pauses, thread pools, connection pools, queue depth."]},
+      {"label": "Diagnose", "items": ["Slice latency by instance and zone: one bad node or noisy neighbor shows up immediately.", "Use distributed traces to see which span grows; look for a slow dependency, retries, cache misses or lock waits.", "Check fan-out: with N parallel calls the request is as slow as the slowest, so 1 − 0.99^N of requests hit a slow component."]},
+      {"label": "Mitigate", "items": ["Eject the bad instance, shift traffic, restart on GC or leak, reduce timeouts so slow calls fail fast instead of piling up.", "Hedged requests (send a second copy after p95) for idempotent reads, with a budget."]},
+      {"label": "Fix and prevent", "items": ["Reduce fan-out, add caching, fix hot partitions, tune pools and GC, add bulkheads.", "SLO-based alerts on p99 and burn rate; per-instance latency dashboards; load test tails, not averages."]}
+    ],
+    "followups": [
+      {"q": "Why do averages hide this?", "a": "Most requests are fast, so the mean barely moves, while a small slow fraction hurts real users and gets amplified by fan-out and retries. Use percentiles from histograms and look at the distribution."}
+    ]
+  },
+  {
+    "id": "sd-queue-backlog",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "The queue backlog keeps growing and emails are hours late",
+    "situation": "Consumer lag is climbing, the oldest message is 3 hours old.",
+    "steps": [
+      {"label": "Understand", "items": ["Compare arrival rate to processing rate (Little's law: consumers needed = rate × processing time). Is it a traffic spike, slower processing, or fewer consumers?", "Check consumer errors and retries: a poison message retried endlessly blocks a partition."]},
+      {"label": "Mitigate", "items": ["Scale consumers (up to partition count); add partitions only if keys allow.", "Pause or throttle low-priority producers; move bulk traffic to a separate queue so urgent messages are not stuck behind it.", "Move poison messages to a dead-letter queue and continue."]},
+      {"label": "Fix", "items": ["Find the slowdown: a slow downstream, a hot key, a lock, an N+1 in the handler; batch work and make handlers concurrent.", "Make processing idempotent so replays are safe."]},
+      {"label": "Prevent", "items": ["Alert on oldest-message age (not only depth); autoscale on lag; priority queues; backpressure and bounded queues; capacity test at peak plus headroom."]}
+    ],
+    "followups": [
+      {"q": "Messages must stay in order per user. How does that change the fix?", "a": "Parallelism is limited to partitions keyed by user; you cannot freely add consumers. Fix the per-message cost, increase partitions ahead of time, or isolate hot users into their own partition. Avoid retrying out of order: park the failing key's messages."}
+    ]
+  },
+  {
+    "id": "sd-stale-reads",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "Users post a comment and it disappears on refresh",
+    "situation": "After writes, reads sometimes return old data. Support tickets mention missing updates.",
+    "steps": [
+      {"label": "Hypothesis", "items": ["Read replicas lagging the primary, or cache serving stale entries after a write, or a CDN caching a dynamic response."]},
+      {"label": "Confirm", "items": ["Check replication lag metrics and whether the read path hits replicas; check cache invalidation on the write path; inspect Cache-Control on the API response."]},
+      {"label": "Mitigate", "items": ["Route a user's reads to the primary for a short window after they write (read-your-writes), or pass the write's log position and read from a replica that has caught up.", "Fix cache invalidation order: write DB first, then delete the key."]},
+      {"label": "Prevent", "items": ["Monitor lag with alerts; document consistency expectations per endpoint; use session stickiness or version tokens for user-visible flows; keep long queries off replicas that block replay."]}
+    ],
+    "followups": [
+      {"q": "Why not make every read go to the primary?", "a": "That removes read scaling and makes the primary a bottleneck. Apply strong reads only where users need to see their own changes and let feeds and counters tolerate lag."}
+    ]
+  },
+  {
+    "id": "sd-thundering-herd",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "Every deploy or cache expiry causes a spike that knocks things over",
+    "situation": "Right after restarts or at the top of the hour, load spikes 10x and services time out.",
+    "steps": [
+      {"label": "Recognize the pattern", "items": ["Synchronized behavior: cold caches, synchronized TTLs, cron jobs at :00, clients reconnecting at once, retries in lockstep."]},
+      {"label": "Mitigate", "items": ["Roll deploys gradually (canary, rolling) with readiness checks and slow start.", "Single-flight on cache misses; serve stale while revalidating; jitter TTLs and cron start times.", "Client backoff with jitter on reconnect and retry."]},
+      {"label": "Prevent", "items": ["Warm caches before taking traffic, connection draining on shutdown, rate limits and load shedding on the server, capacity headroom for restarts."]}
+    ],
+    "followups": [{"q": "How does jitter help mathematically?", "a": "It spreads N synchronized events over a window instead of one instant, cutting peak load roughly by the window length divided by the event spread."}]
+  },
+  {
+    "id": "sd-hot-partition",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "One shard is overloaded while others are idle",
+    "situation": "A single partition or node is at 100% while the cluster average is 20%.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Find the hot key or range: per-partition metrics, top keys, request sampling.", "Distinguish hot key (one celebrity or tenant), hot range (monotonic keys like timestamps) and skewed hash."]},
+      {"label": "Mitigate", "items": ["Cache the hot key and replicate it; add a local cache with short TTL.", "Split the hot partition or move the heavy tenant to a dedicated shard.", "Key salting for write hotspots: append a suffix 0..N-1 and merge on read."]},
+      {"label": "Prevent", "items": ["Choose shard keys by cardinality and traffic distribution; automatic range splitting; per-key rate limits; monitor per-partition load."]}
+    ],
+    "followups": [{"q": "Does consistent hashing fix hot keys?", "a": "No. It balances key counts, not traffic. A single hot key always lands on one node, so you replicate, cache or split the key."}]
+  },
+  {
+    "id": "sd-region-outage",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "The cloud region hosting your primary is down",
+    "situation": "All services in region A are unreachable. Region B has async replicas.",
+    "steps": [
+      {"label": "Decide", "items": ["Confirm it is the region (provider status, multiple probes) and not your own deploy. Check replication lag in B to know your data loss (RPO).", "Decide to fail over according to the runbook; avoid flapping."]},
+      {"label": "Execute failover", "items": ["Promote the replica in B, fence the old primary so it cannot accept writes if region A returns, bring up compute (or scale warm standby), update DNS or global load balancer.", "Warm caches, verify health, ramp traffic."]},
+      {"label": "Communicate and reconcile", "items": ["Status page and customer communication; record the data window that may be lost.", "When A returns, reconcile divergent writes before failing back; fail back deliberately in a quiet window."]},
+      {"label": "Prevent", "items": ["Regular failover game days, infrastructure as code, no hidden single-region dependencies (auth, secrets, DNS), documented RPO and RTO."]}
+    ],
+    "followups": [{"q": "What if replica lag was 30 seconds?", "a": "You lose up to 30 seconds of acknowledged writes unless synchronous replication or a durable log exists. Tell stakeholders, export what you can from the failed region later, and reconcile. Decide in advance which operations (payments) need synchronous durability."}]
+  },
+  {
+    "id": "sd-disk-full",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "Disk is full on the database or log servers",
+    "situation": "Writes fail with no space left on device.",
+    "steps": [
+      {"label": "Immediate", "items": ["Find the consumer: du by directory, WAL/binlog growth, a replication slot retaining WAL, runaway logs, a huge temp file.", "Free safe space: rotate or delete old logs, drop unneeded temp or backup files, expand the volume if the platform allows it online."]},
+      {"label": "Root cause", "items": ["A stuck replica or connector holding WAL, a backup job not cleaning up, missing log rotation, data growth outpacing capacity planning."]},
+      {"label": "Prevent", "items": ["Alert at 70-80% and on growth rate (predict days to full), retention and rotation policies, separate volumes for data, WAL and logs, regular capacity reviews."]}
+    ],
+    "followups": [{"q": "Why can an inactive replication slot fill the disk?", "a": "The primary keeps WAL until every slot has consumed it. If a consumer is down, WAL accumulates indefinitely. Monitor slot lag and drop abandoned slots."}]
+  },
+  {
+    "id": "sd-bad-data",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "A bad deploy corrupted data in the database",
+    "situation": "A bug has been writing wrong values for 40 minutes before it was noticed.",
+    "steps": [
+      {"label": "Stop the bleeding", "items": ["Roll back or disable the offending code path; pause related jobs and consumers so corrupted data does not propagate to caches, search and warehouses."]},
+      {"label": "Assess the blast radius", "items": ["Identify affected rows by time window and code path (audit logs, change data capture, event log).", "Check downstream copies: events already published, derived tables, exports."]},
+      {"label": "Repair", "items": ["Restore from point-in-time backup into a side database and diff against production, then patch affected rows with a reviewed, idempotent script; or replay events from before the bug with the fixed code.", "Prefer fixing forward on a small verified subset first."]},
+      {"label": "Prevent", "items": ["Append-only event logs or audit tables, canary releases with data-quality checks, constraints and validations in the database, tested restore procedures, feature flags for risky writes."]}
+    ],
+    "followups": [{"q": "Why is replication not a backup here?", "a": "Replicas copy the bad writes within milliseconds. Only point-in-time recovery, snapshots or an immutable event log let you go back."}]
+  },
+  {
+    "id": "sd-duplicate-charges",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "Customers were charged twice",
+    "situation": "Timeouts caused client retries, and the payment endpoint processed some requests twice.",
+    "steps": [
+      {"label": "Contain", "items": ["Stop the bleeding: enable dedupe or disable retries on the path; pause settlement jobs if needed.", "Quantify: find duplicate charges by (customer, amount, timestamp window) and refund them."]},
+      {"label": "Root cause", "items": ["Non-idempotent endpoint plus at-least-once clients and gateways; consumer reprocessing messages; missing unique constraint."]},
+      {"label": "Fix properly", "items": ["Idempotency keys stored atomically with the side effect (unique constraint on key); return the stored result on repeats.", "Use the payment provider's idempotency support; make consumers idempotent with processed-message tables; add reconciliation jobs comparing your ledger with the provider."]},
+      {"label": "Prevent", "items": ["Chaos tests that duplicate and delay requests; alerts on duplicate-payment rate; contract tests that every write endpoint accepts an idempotency key."]}
+    ],
+    "followups": [{"q": "The client lost the response after a successful charge. What does a retry do?", "a": "With the same idempotency key the server finds the stored result and returns it without charging again. That is the reason the key is persisted in the same transaction as the charge record."}]
+  },
+  {
+    "id": "sd-cascade",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "One slow service is bringing down everything upstream",
+    "situation": "Service C slowed down; A and B now time out and error although they are healthy.",
+    "steps": [
+      {"label": "Identify the cascade", "items": ["Trace from the user-facing error to the slow dependency; look for threads or connections stuck waiting and retry amplification."]},
+      {"label": "Mitigate", "items": ["Cut the dependency: circuit breaker open, feature flag off, serve fallback or cached data.", "Lower timeouts and cap retries; shed load at the entry point; scale or restart the slow service if it is saturated."]},
+      {"label": "Prevent", "items": ["Timeouts everywhere, bulkheads per dependency, circuit breakers, retry budgets with jitter, deadline propagation, load shedding, graceful degradation design."]}
+    ],
+    "followups": [{"q": "Why do retries make it worse?", "a": "Each timed-out call is retried, multiplying load on the struggling service and delaying recovery; with retries at several layers the amplification is multiplicative."}]
+  },
+  {
+    "id": "sd-cert-dns",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "A TLS certificate expired (or DNS broke) and clients cannot connect",
+    "situation": "Sudden spike of connection errors; servers are healthy.",
+    "steps": [
+      {"label": "Fast checks", "items": ["Probe from outside: curl -v and openssl s_client for certificate dates; dig for DNS answers and TTLs; check CDN and load balancer certs separately from origins."]},
+      {"label": "Mitigate", "items": ["Renew or replace the certificate and reload; roll back the DNS change; lower TTLs in advance for risky DNS changes."]},
+      {"label": "Prevent", "items": ["Automated renewal (ACME) with monitoring and alerts at 30, 14 and 7 days; inventory of all certs; DNS changes through reviewed IaC with staged rollout; synthetic probes from several regions."]}
+    ],
+    "followups": [{"q": "Why can fixing DNS take hours?", "a": "Resolvers and clients cache answers for the record TTL (and some ignore it), so a bad record can persist after you correct it. Keep TTLs moderate on critical records and change them gradually."}]
+  },
+  {
+    "id": "sd-cost-spike",
+    "phase": "system-design",
+    "kind": "incident",
+    "title": "The cloud bill doubled this month",
+    "situation": "Finance flags a 2x increase with no matching traffic growth.",
+    "steps": [
+      {"label": "Find where", "items": ["Cost explorer grouped by service, account, tag, region and day; find the day it jumped and correlate with deploys and changes."]},
+      {"label": "Usual suspects", "items": ["Cross-AZ or cross-region data transfer, NAT gateway egress, log volume and retention, unbounded autoscaling, idle or oversized instances and GPUs, orphaned volumes and snapshots, LLM token usage from a prompt change or a retry loop."]},
+      {"label": "Act", "items": ["Fix the leak first (cap autoscaling, reduce log level, shorten retention, kill orphans), then optimize: right-size, reserved/savings plans, spot for batch, caching and compression."]},
+      {"label": "Prevent", "items": ["Budgets and anomaly alerts per team, mandatory tags, unit economics (cost per request, per tenant, per 1M tokens) on dashboards, cost review in design reviews."]}
+    ],
+    "followups": [{"q": "How do you track LLM cost?", "a": "Log input and output tokens per request with tenant, feature and model; cost = tokens × price; alert on cost per task and on retries and agent steps, set per-tenant budgets in the gateway."}]
+  },
+  {
+    "id": "sd-10x",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "We expect 10x traffic next quarter. What do we do?",
+    "situation": "A product launch will multiply traffic. The current system is a monolith with one Postgres primary.",
+    "steps": [
+      {"label": "Clarify", "items": ["What is 10x of what: reads, writes, concurrent users? Peak shape (spiky launch or steady growth)? Latency and availability targets, budget, deadline."]},
+      {"label": "Measure the current limits", "items": ["Load test to find the first bottleneck and its capacity; get per-component headroom (app CPU, DB CPU and IOPS, connections, cache hit rate)."]},
+      {"label": "Plan in order of cost", "items": ["Fix hot queries and indexes; add caching and a CDN; scale app tier horizontally behind a load balancer; add read replicas; move heavy work to queues; autoscaling with limits.", "Only then consider sharding or splitting services, based on measured write limits."]},
+      {"label": "Protect the launch", "items": ["Rate limiting and load shedding, graceful degradation of non-critical features, feature flags to turn off expensive features, staged rollout, runbooks and on-call coverage, capacity reservations."]},
+      {"label": "Trade-offs to state", "items": ["Caching adds staleness, replicas add lag, queues add async complexity, sharding is hard to undo."]}
+    ],
+    "followups": [{"q": "How do you know you are ready?", "a": "A load test at 1.5x the forecast peak that passes with SLOs met, a rehearsed failure (kill a node and the cache), alerts and runbooks in place, and autoscaling limits verified."}]
+  },
+  {
+    "id": "sd-realtime-notify",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "We need real-time notifications for millions of users",
+    "situation": "Product wants live updates in the web app and mobile push for important events.",
+    "steps": [
+      {"label": "Clarify", "items": ["Delivery guarantee (best effort or must arrive), latency target, number of concurrent connections, message rate and fan-out, offline behavior."]},
+      {"label": "Options", "items": ["Polling: simplest, wasteful. SSE: one-way push, easy through proxies. WebSocket: bidirectional, more state. Mobile push (APNs/FCM) for offline devices."]},
+      {"label": "Recommend", "items": ["Event service publishes to a broker; a thin connection tier (WebSocket or SSE) subscribes to user channels via pub/sub; presence map in Redis; persist notifications with a sequence number for catch-up on reconnect; push provider for offline users.", "Clients ack, dedupe by id, reconnect with backoff and jitter."]},
+      {"label": "Trade-offs and pitfalls", "items": ["Connection state and deploys (drain connections), reconnect storms, fan-out amplification for broadcast events (use topic channels, throttle and coalesce), per-user preferences and rate limits."]}
+    ],
+    "followups": [{"q": "At-least-once or at-most-once?", "a": "Use at-least-once with client dedupe by id for important notifications and best effort for ephemeral signals like typing indicators."}]
+  },
+  {
+    "id": "sd-exactly-once",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "We need exactly-once processing of payments or orders",
+    "situation": "A requirement says no duplicate and no lost payments across services and a message broker.",
+    "steps": [
+      {"label": "Reframe", "items": ["Exactly-once delivery is impossible over unreliable networks; aim for exactly-once effects: at-least-once delivery plus idempotent processing."]},
+      {"label": "Design", "items": ["Client idempotency key on the API; unique constraint to dedupe.", "Transactional outbox so state change and event are atomic; consumers record processed ids in the same transaction as their effect.", "Reconciliation job comparing ledger with the payment provider to catch drift."]},
+      {"label": "Failure cases to walk through", "items": ["Crash after charge before response: retry returns stored result.", "Crash after publish before marking sent: duplicate event, consumer dedupes.", "Provider timeout: query status by idempotency key before retrying."]},
+      {"label": "Trade-offs", "items": ["Extra storage and latency for dedupe tables, ordering constraints per key, operational need for reconciliation."]}
+    ],
+    "followups": [{"q": "Does Kafka exactly-once solve it?", "a": "Only inside Kafka (consume-process-produce). Side effects in a database or external API still need idempotency, so you combine both."}]
+  },
+  {
+    "id": "sd-global-latency",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "Users in Asia and Europe complain about latency to our US-only system",
+    "situation": "Single region deployment; round trips are 150-250 ms.",
+    "steps": [
+      {"label": "Clarify", "items": ["Which requests are slow (static, reads, writes)? Is data residency a constraint? Consistency needs for writes?"]},
+      {"label": "Options in order", "items": ["CDN for static and cacheable content; TLS termination at the edge.", "Regional read replicas and caches for reads.", "Multi-region active-active or home-region partitioning for writes; edge compute for light logic."]},
+      {"label": "Recommend", "items": ["Start with CDN and edge TLS, add regional read replicas with read-your-writes routing, then partition users by home region for writes if write latency matters.", "Global load balancer or latency-based DNS routing with health checks."]},
+      {"label": "Trade-offs", "items": ["Replication lag and conflict handling, cost of extra regions, operational complexity, data residency rules."]}
+    ],
+    "followups": [{"q": "How do you handle a user who travels?", "a": "Route by home region (or fall back to the nearest read replica for reads) and keep writes going to the home region, accepting extra latency for that user while traveling."}]
+  },
+  {
+    "id": "sd-search-feature",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "Add search to the product catalog",
+    "situation": "Users need fast text search with filters and typo tolerance across 50 million items.",
+    "steps": [
+      {"label": "Clarify", "items": ["Query types (keyword, facets, autocomplete), freshness (seconds or minutes), ranking signals, scale and QPS."]},
+      {"label": "Options", "items": ["Database full-text (Postgres tsvector): simplest for smaller data.", "Dedicated search engine (Elasticsearch/OpenSearch, Typesense): relevance, facets, scale.", "Hybrid vector plus keyword for semantic needs."]},
+      {"label": "Recommend", "items": ["Keep the database as source of truth; stream changes via CDC or outbox into a search index; shard and replicate the index; rank with BM25 plus business signals; precomputed typeahead; monitor index lag."]},
+      {"label": "Trade-offs and pitfalls", "items": ["Index drift and reindexing strategy (alias swap), eventual consistency of search vs database, cost of the cluster, relevance tuning needs evaluation data."]}
+    ],
+    "followups": [{"q": "How do you reindex without downtime?", "a": "Build a new index in the background, dual-write or catch up via CDC, validate, then switch an alias atomically and keep the old index for rollback."}]
+  },
+  {
+    "id": "sd-noisy-neighbor",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "One large tenant keeps slowing down everyone else",
+    "situation": "A multi-tenant SaaS has shared infrastructure; a big customer runs heavy jobs.",
+    "steps": [
+      {"label": "Options", "items": ["Per-tenant rate limits and quotas; fair queuing between tenants; separate worker pools by tier; dedicated shard or cell for the heavy tenant."]},
+      {"label": "Recommend", "items": ["Short term: per-tenant limits and a separate low-priority queue for batch work. Medium term: tiered isolation, with large tenants on dedicated resources (cell-based architecture)."]},
+      {"label": "Trade-offs", "items": ["Isolation costs more and complicates operations; limits can frustrate customers, so communicate and make quotas configurable by plan; monitor per-tenant resource use to bill and plan capacity."]}
+    ],
+    "followups": [{"q": "What is a cell-based architecture?", "a": "Split the system into independent cells, each serving a subset of tenants end to end. A failure or overload is contained to one cell, which limits the blast radius."}]
+  },
+  {
+    "id": "sd-zero-downtime-migration",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "Migrate a 20 TB table to a new schema or store with no downtime",
+    "situation": "The old model cannot scale; the business cannot accept an outage.",
+    "steps": [
+      {"label": "Plan", "items": ["Define success metrics, rollback plan and freeze points; create the new structure alongside the old."]},
+      {"label": "Execute (expand and contract)", "items": ["Backfill in throttled, resumable, idempotent batches while streaming live changes (CDC or dual write).", "Verify with counts, checksums and shadow reads comparing old and new results.", "Switch reads gradually (percentage rollout), then writes; keep the ability to flip back; finally stop writing to the old store and remove it after a safe window."]},
+      {"label": "Pitfalls", "items": ["Dual writes can diverge; prefer CDC. Long locks from DDL; use online schema change tools. Backfill load hurting production; throttle and run off-peak."]}
+    ],
+    "followups": [{"q": "How do you verify correctness?", "a": "Shadow reads: serve users from the old path while comparing the new path in the background, log mismatches, and only cut over when the mismatch rate is acceptably near zero."}]
+  },
+  {
+    "id": "sd-api-rate-limit",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "We are launching a public API. How do we protect it?",
+    "situation": "Partners will call the API; some may be abusive or buggy.",
+    "steps": [
+      {"label": "Clarify", "items": ["Plans and quotas, burst needs, per-endpoint cost, SLAs, abuse model."]},
+      {"label": "Recommend", "items": ["API keys with plans; token bucket per key (and per endpoint cost); layered limits (edge by IP, gateway by key, service concurrency); 429 with Retry-After and rate-limit headers; quotas for monthly usage; idempotency keys for writes."]},
+      {"label": "Operational", "items": ["Usage dashboards per key, alerts, a kill switch per key, documentation of backoff behavior, SDKs with built-in retry and jitter."]}
+    ],
+    "followups": [{"q": "Which algorithm and why?", "a": "Token bucket for burst tolerance and variable cost, backed by Redis with atomic Lua; a daily quota counter for plan limits. See the rate limiting concept for details."}]
+  },
+  {
+    "id": "sd-consistency-choice",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "Inventory: strong consistency or eventual?",
+    "situation": "An e-commerce site must not oversell, but needs to scale reads.",
+    "steps": [
+      {"label": "Split the problem", "items": ["Browsing and search can show approximate stock (eventual, cached). Checkout needs an authoritative decrement."]},
+      {"label": "Recommend", "items": ["Display stock from cache/search with a 'low stock' threshold; at checkout do an atomic conditional decrement (UPDATE ... WHERE stock >= n) or a reservation with expiry on the authoritative store; handle hot items with a queue or sharded counters."]},
+      {"label": "Trade-offs", "items": ["Slight overselling risk vs availability if you allow backorders; reservation expiry logic; hot SKU contention during flash sales."]}
+    ],
+    "followups": [{"q": "What if two users buy the last item at once?", "a": "The atomic conditional update lets exactly one succeed; the other gets a clear out-of-stock result. Reservations with a short expiry protect the checkout window."}]
+  },
+  {
+    "id": "sd-ai-feature-latency",
+    "phase": "system-design",
+    "kind": "design",
+    "title": "Our LLM feature is too slow and too expensive",
+    "situation": "A chat feature has 8 second responses and a high monthly token bill.",
+    "steps": [
+      {"label": "Measure", "items": ["Break down time to first token, tokens per second and total tokens; cost per request by prompt size and output size; where retries and agent steps multiply calls."]},
+      {"label": "Levers", "items": ["Stream tokens so perceived latency is the first token; shorten prompts (retrieval instead of stuffing, prompt trimming); prompt caching for stable prefixes; smaller model for easy requests with routing; cap max output; cache repeated answers."]},
+      {"label": "Infra", "items": ["Continuous batching, quantization, speculative decoding if self-hosting; regional endpoints; parallelize independent calls."]},
+      {"label": "Guard quality", "items": ["Evaluate each change on a golden set; do not trade quality blindly; A/B test."]}
+    ],
+    "followups": [{"q": "How would you route between models?", "a": "A cheap classifier or heuristic scores difficulty; easy requests use a small model, hard ones the large model, with fallback and quality monitoring on both paths."}]
+  }
+]

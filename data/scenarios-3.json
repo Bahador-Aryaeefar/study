@@ -1,0 +1,240 @@
+[
+  {
+    "id": "be-slow-endpoint",
+    "phase": "backend-data",
+    "kind": "incident",
+    "title": "An endpoint got 10x slower after a release",
+    "situation": "Latency on /orders jumped from 80 ms to 900 ms; no infrastructure change.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Trace one slow request: which span grew? Compare the query count per request before and after (an ORM change often introduces N+1 queries).", "Check the plan of the main query and table growth; check external calls and serialization size."]},
+      {"label": "Mitigate", "items": ["Roll back if the change is clearly the cause; add a quick index or eager-load relations to remove N+1; cache the hot result briefly."]},
+      {"label": "Prevent", "items": ["Query count assertions in tests, slow-query logging, performance budgets in CI, load tests on realistic data."]}
+    ],
+    "followups": [{"q": "What is N+1 and how do you fix it?", "a": "One query loads a list and then one query per item loads related data. Fix with a join or a batched IN query (eager loading, DataLoader)."}]
+  },
+  {
+    "id": "be-deadlock-pool",
+    "phase": "backend-data",
+    "kind": "incident",
+    "title": "The service hangs with 'too many connections' to the database",
+    "situation": "Requests queue up and time out; the DB shows hundreds of idle-in-transaction connections.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Look at connection counts by state and by client; find transactions held open across slow external calls or leaked on error paths; check pool size times instance count versus max_connections."]},
+      {"label": "Mitigate", "items": ["Restart leaking instances, terminate idle-in-transaction sessions, set idle_in_transaction_session_timeout and statement_timeout."]},
+      {"label": "Fix and prevent", "items": ["Never hold a transaction while calling external services; always release connections in finally blocks; use a pooler like PgBouncer in transaction mode; size pools from capacity math and alert on pool wait time."]}
+    ],
+    "followups": [{"q": "Why can a bigger pool make it worse?", "a": "More concurrent queries means more contention and context switching on the database; throughput often falls past an optimum. Use a small pool and queue in the application."}]
+  },
+  {
+    "id": "be-migration-lock",
+    "phase": "backend-data",
+    "kind": "incident",
+    "title": "A schema migration locked the main table and blocked production writes",
+    "situation": "An ALTER TABLE on a 500M-row table is holding locks; the app is timing out.",
+    "steps": [
+      {"label": "Stop it", "items": ["Cancel the migration session; confirm locks are released; check for the queue of blocked statements."]},
+      {"label": "Redo safely", "items": ["Expand and contract: add nullable column without default rewrite, backfill in small batches, add constraints as NOT VALID then VALIDATE, create indexes concurrently, use online schema change tools, set lock_timeout so the migration fails instead of blocking."]},
+      {"label": "Prevent", "items": ["Migration review checklist, staging with production-sized data, lock_timeout and statement_timeout in migration tooling, backward-compatible deploy order (migrate then deploy)."]}
+    ],
+    "followups": [{"q": "Why set lock_timeout?", "a": "A DDL statement waiting for a lock blocks every later query behind it. A short lock_timeout makes it fail fast so you retry at a quieter moment."}]
+  },
+  {
+    "id": "be-pipeline-late",
+    "phase": "backend-data",
+    "kind": "incident",
+    "title": "The nightly data pipeline failed and dashboards are wrong",
+    "situation": "Executives opened the revenue dashboard and the numbers are yesterday's.",
+    "steps": [
+      {"label": "Respond", "items": ["Mark the dashboard as stale (annotate data freshness), inform stakeholders, find the failed task and its error."]},
+      {"label": "Recover", "items": ["Fix the cause (schema change upstream, quota, bad record) and rerun idempotently for the failed partition; confirm downstream tables update; backfill missed days."]},
+      {"label": "Prevent", "items": ["Data quality tests (row counts, nulls, freshness, uniqueness), alerting on SLA breach, idempotent partitioned loads, schema contracts with upstream, retries with backoff, lineage to see impact."]}
+    ],
+    "followups": [{"q": "Why must loads be idempotent?", "a": "Reruns after failure must not duplicate or corrupt data. Overwrite partitions or upsert by key so repeating a run gives the same result."}]
+  },
+  {
+    "id": "be-service-boundaries",
+    "phase": "backend-data",
+    "kind": "design",
+    "title": "Choose between REST, gRPC, events and a queue for service communication",
+    "situation": "Orders must notify billing, inventory and email; some need an immediate answer, some do not.",
+    "steps": [
+      {"label": "Split by need", "items": ["Needs an immediate answer to continue (inventory check): synchronous call (gRPC internally) with timeout, retry budget and circuit breaker.", "Notifies others without waiting (email, analytics): publish an event via outbox to a broker."]},
+      {"label": "Recommend", "items": ["Synchronous for the critical path, events for propagation, idempotent consumers, schemas versioned in a registry, tracing across both."]},
+      {"label": "Trade-offs", "items": ["Sync chains multiply latency and failure; async adds eventual consistency and harder debugging; events need versioning discipline."]}
+    ],
+    "followups": [{"q": "How do you version events?", "a": "Only additive changes within a version, a schema registry with compatibility checks, and consumers that ignore unknown fields; breaking changes get a new topic or version with a migration window."}]
+  },
+  {
+    "id": "do-pod-crashloop",
+    "phase": "devops-cloud",
+    "kind": "incident",
+    "title": "Pods are in CrashLoopBackOff after a deploy",
+    "situation": "The new version of the service never becomes ready; the rollout is stuck.",
+    "steps": [
+      {"label": "Gather facts", "items": ["kubectl get pods, describe pod (events, last state, exit code, OOMKilled), kubectl logs --previous; check readiness and liveness probe failures and config or secret changes."]},
+      {"label": "Common causes", "items": ["Missing env var or secret, bad config, failed DB migration or connection, memory limit too low (OOMKilled, exit 137), probe too aggressive, wrong image tag or architecture."]},
+      {"label": "Mitigate", "items": ["kubectl rollout undo to the last good revision; the old pods keep serving if maxUnavailable was configured safely."]},
+      {"label": "Prevent", "items": ["Staging with production-like config, readiness probes with startup probes, resource requests and limits based on measurements, progressive delivery (canary) with automated rollback, config validation in CI."]}
+    ],
+    "followups": [{"q": "Liveness vs readiness vs startup probes?", "a": "Readiness gates traffic, liveness restarts a stuck container, startup delays the other probes for slow-starting apps. A too-strict liveness probe can cause restart loops under load."}]
+  },
+  {
+    "id": "do-bad-deploy",
+    "phase": "devops-cloud",
+    "kind": "incident",
+    "title": "A deploy caused errors in production. Walk me through your response.",
+    "situation": "Error rate jumped from 0.1% to 8% five minutes after a release.",
+    "steps": [
+      {"label": "Decide quickly", "items": ["Correlate the error spike with the deploy marker; if it lines up, roll back (or turn off the feature flag) immediately. Investigate after users are safe."]},
+      {"label": "Verify recovery", "items": ["Confirm error rate and latency return to baseline; check queues and downstream effects; communicate status."]},
+      {"label": "Root cause", "items": ["Reproduce in staging, read the diff and logs, identify why tests and canary did not catch it."]},
+      {"label": "Prevent", "items": ["Canary releases with automated metric checks and auto-rollback, feature flags, backward-compatible changes (expand/contract), smoke tests post-deploy, small frequent releases."]}
+    ],
+    "followups": [{"q": "What if the deploy included a database migration?", "a": "Design migrations to be backward compatible so the old code works with the new schema, deploy schema first, and avoid destructive changes until the old code is gone, otherwise rollback becomes impossible."}]
+  },
+  {
+    "id": "do-node-pressure",
+    "phase": "devops-cloud",
+    "kind": "incident",
+    "title": "Nodes run out of memory and pods get evicted",
+    "situation": "Pods restart randomly; kubectl shows evictions and OOMKilled events.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Compare container memory usage to requests and limits; look for a leak (memory grows over time), a spike on certain inputs, or noisy neighbors on the node."]},
+      {"label": "Mitigate", "items": ["Raise limits or add nodes temporarily; restart the leaking service; spread pods with anti-affinity."]},
+      {"label": "Fix and prevent", "items": ["Set requests close to real usage and limits with headroom (requests equal limits for guaranteed QoS on critical pods), profile and fix leaks, use VPA recommendations, pod disruption budgets and autoscaling, alerts on memory saturation."]}
+    ],
+    "followups": [{"q": "What do requests and limits do?", "a": "Requests are used for scheduling and reserve capacity; limits cap usage (CPU is throttled, memory over the limit gets OOMKilled). Mismatched values cause eviction or waste."}]
+  },
+  {
+    "id": "do-infra-design",
+    "phase": "devops-cloud",
+    "kind": "design",
+    "title": "Design CI/CD and environments for a team shipping daily",
+    "situation": "A growing team wants fast, safe releases for several services.",
+    "steps": [
+      {"label": "Pipeline", "items": ["Pull request: lint, unit tests, security scans, build image. Merge: integration tests, publish immutable image tagged by commit, deploy to staging automatically, run smoke and e2e tests, promote to production with canary and automated rollback."]},
+      {"label": "Practices", "items": ["Infrastructure as code with review and drift detection, GitOps for deployment state, secrets in a manager, preview environments per PR, feature flags to decouple deploy from release, DORA metrics."]},
+      {"label": "Trade-offs", "items": ["More environments cost more; full e2e is slow so layer tests; trunk-based development needs flags and good tests."]}
+    ],
+    "followups": [{"q": "Blue-green vs canary vs rolling?", "a": "Rolling replaces instances gradually with low cost; blue-green switches all traffic between two full environments for instant rollback at double cost; canary shifts a small percentage and watches metrics before widening, which gives the best risk control."}]
+  },
+  {
+    "id": "ml-model-degraded",
+    "phase": "mlops",
+    "kind": "incident",
+    "title": "The model's accuracy in production dropped silently",
+    "situation": "Business metrics are down; no errors or alerts fired.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Check data drift (input feature distributions vs training), concept drift (relationship between features and label changed), upstream pipeline or schema changes, training-serving skew (feature computed differently online), and label delay."]},
+      {"label": "Mitigate", "items": ["Roll back to the previous model, fall back to rules or a simpler model, fix the broken feature pipeline."]},
+      {"label": "Fix and prevent", "items": ["Monitor feature and prediction distributions (PSI, KS tests), data quality checks, delayed-label performance tracking, shadow deployments of candidates, automated retraining with validation gates, feature store for consistent online and offline features."]}
+    ],
+    "followups": [{"q": "What is training-serving skew?", "a": "Differences between how features are computed in training and in production (different code, time windows, missing values). It silently hurts accuracy; prevent with shared feature definitions and tests comparing offline and online values."}]
+  },
+  {
+    "id": "ml-gpu-oom",
+    "phase": "mlops",
+    "kind": "incident",
+    "title": "Inference replicas crash with CUDA out-of-memory under load",
+    "situation": "After traffic grew, GPU pods restart with OOM errors.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Check memory breakdown: weights, KV cache (grows with concurrent sequences and context length), activations, fragmentation; look at max concurrent requests and prompt length distribution."]},
+      {"label": "Mitigate", "items": ["Cap concurrency and max context length, enable admission control with queueing, restart with a lower max batch size, scale out replicas."]},
+      {"label": "Fix and prevent", "items": ["Use paged KV cache, quantization (weights and KV), grouped-query attention models, shorter context via retrieval, memory headroom settings, load tests with realistic length distributions, autoscaling on queue depth."]}
+    ],
+    "followups": [{"q": "How do you compute how many concurrent requests fit?", "a": "Free memory = GPU memory minus weights minus overhead; divide by KV bytes per token times tokens per sequence. For an 8B model at 128 KiB per token and 4k tokens, about 0.5 GiB per sequence."}]
+  },
+  {
+    "id": "ml-serving-design",
+    "phase": "mlops",
+    "kind": "design",
+    "title": "Choose how to serve a model: batch, online, streaming or edge?",
+    "situation": "A team has a recommendation model and a fraud model with different needs.",
+    "steps": [
+      {"label": "Decide by latency and freshness", "items": ["Batch scoring (hourly or daily, results stored): cheapest, for recommendations that tolerate staleness. Online scoring (milliseconds, per request): fraud checks that need current data. Streaming: continuous features from event streams. Edge: privacy or offline needs."]},
+      {"label": "Recommend", "items": ["Recommendations: batch candidate generation plus online re-ranking with cached features. Fraud: online inference with a feature store, strict latency budget and fallback rules."]},
+      {"label": "Operate", "items": ["Model registry with versions and lineage, canary and shadow rollouts, monitoring of drift and latency, autoscaling, rollback."]}
+    ],
+    "followups": [{"q": "How do you roll out a new model safely?", "a": "Shadow mode to compare predictions without affecting users, then a small canary with business and model metrics, then gradual ramp with automatic rollback on guardrail breaches."}]
+  },
+  {
+    "id": "ml-llmops-release",
+    "phase": "mlops",
+    "kind": "design",
+    "title": "Release process for prompts, models and retrieval changes",
+    "situation": "LLM behavior changes whenever someone edits a prompt; production has surprises.",
+    "steps": [
+      {"label": "Treat prompts as code", "items": ["Version prompts, tools, retrieval config and model ids together; review changes; keep them in config so they can change without redeploys."]},
+      {"label": "Gate releases", "items": ["Offline eval on a golden set in CI; compare to the baseline per category; require no regressions; then canary with online metrics (thumbs, task success, latency, cost)."]},
+      {"label": "Operate", "items": ["Pin provider model versions, monitor quality with sampled judges, alert on drift in cost per task and refusal rates, keep a fast rollback."]}
+    ],
+    "followups": [{"q": "How do you handle provider model deprecation?", "a": "Track deprecation dates, run your eval suite against the replacement early, adjust prompts, and roll out with canary before the old model is shut off."}]
+  },
+  {
+    "id": "dl-training-unstable",
+    "phase": "deep-learning",
+    "kind": "incident",
+    "title": "Training loss suddenly becomes NaN or spikes",
+    "situation": "A run that was converging explodes after several thousand steps.",
+    "steps": [
+      {"label": "Triage", "items": ["Find the first step with the anomaly; check the data batch (corrupt sample, extreme values), learning rate schedule (warmup, peak too high), gradient norms, mixed-precision overflow, and a bad node or GPU."]},
+      {"label": "Fix", "items": ["Gradient clipping, lower peak learning rate or longer warmup, bf16 instead of fp16 (wider range) or loss scaling, check normalization layers and epsilon values, skip or filter bad batches, resume from the last good checkpoint."]},
+      {"label": "Prevent", "items": ["Log gradient norm, loss and learning rate; frequent checkpoints; data validation; small-scale reproduction before large runs; alerting on loss spikes."]}
+    ],
+    "followups": [{"q": "Why bf16 over fp16?", "a": "bf16 keeps the same exponent range as fp32, so it avoids most overflow and underflow problems that make fp16 need loss scaling, at lower mantissa precision."}]
+  },
+  {
+    "id": "ml-overfitting",
+    "phase": "math-ml",
+    "kind": "design",
+    "title": "The model has 99% training accuracy and 70% validation accuracy. What now?",
+    "situation": "A classic overfitting symptom; you must decide how to respond.",
+    "steps": [
+      {"label": "Rule out bugs", "items": ["Check for data leakage in the other direction (too good to be true) and train/validation split correctness (time-based splits for temporal data, group splits by user)."]},
+      {"label": "Reduce variance", "items": ["More data or augmentation, regularization (weight decay, dropout, early stopping), simpler model or fewer features, cross-validation, ensembling."]},
+      {"label": "Measure properly", "items": ["Choose metrics matching the business (precision/recall, AUC, calibration), look at learning curves to decide whether more data helps, evaluate on a held-out test set once."]}
+    ],
+    "followups": [{"q": "High bias vs high variance?", "a": "High bias: both training and validation errors are high (underfit), so use a richer model or better features. High variance: training error low, validation high (overfit), so add data or regularize."}]
+  },
+  {
+    "id": "found-git-mistake",
+    "phase": "foundations",
+    "kind": "incident",
+    "title": "A secret was committed and pushed to the repository",
+    "situation": "An API key landed in a public or shared repo history.",
+    "steps": [
+      {"label": "First", "items": ["Revoke and rotate the key immediately; assume it is compromised. Check provider logs for usage."]},
+      {"label": "Clean up", "items": ["Remove from history with git filter-repo or BFG and force-push, notify collaborators to re-clone; note that forks, caches and clones may still hold it, which is why rotation is the real fix."]},
+      {"label": "Prevent", "items": ["Pre-commit and CI secret scanning, secrets in a vault or environment, .gitignore for env files, short-lived credentials, least privilege scopes."]}
+    ],
+    "followups": [{"q": "Why is deleting the commit not enough?", "a": "The secret exists in prior clones, forks, CI logs and caches. Only revoking it makes it useless."}]
+  },
+  {
+    "id": "career-behavioral",
+    "phase": "interview-career",
+    "kind": "design",
+    "title": "Answer 'tell me about a time something went wrong in production'",
+    "situation": "A senior-level behavioral question that tests ownership and judgment.",
+    "steps": [
+      {"label": "Structure (STAR with a reliability lens)", "items": ["Situation and impact with numbers (users affected, duration, money). Your role and the constraints."]},
+      {"label": "Action", "items": ["How you detected it, how you mitigated before diagnosing (rollback, flag, failover), how you communicated, how you found the root cause."]},
+      {"label": "Result and learning", "items": ["Outcome in numbers, the permanent fixes (tests, alerts, runbooks, design change), what you would do differently, how it changed the team's process."]},
+      {"label": "Tone", "items": ["Blameless, specific, honest about your own mistakes, focused on systems not individuals."]}
+    ],
+    "followups": [{"q": "What if you caused the incident?", "a": "Say so plainly, focus on the response and the systemic gap that let the change through, and describe the guardrails you added so the same mistake cannot reach production again."}]
+  },
+  {
+    "id": "career-ambiguous-design",
+    "phase": "interview-career",
+    "kind": "design",
+    "title": "The interviewer gives a vague design prompt. How do you start?",
+    "situation": "'Design an AI assistant for our support team.' No other details.",
+    "steps": [
+      {"label": "Clarify (2-3 minutes)", "items": ["Users and goals, scale (users, QPS), latency and accuracy needs, data sources, risk of wrong answers, constraints (budget, privacy, team size)."]},
+      {"label": "State assumptions and a plan", "items": ["Write the requirements and numbers down, outline the sections you will cover, and agree on where to go deep."]},
+      {"label": "Build up", "items": ["Start with the simplest design that works, walk the main path, then find bottlenecks and failure modes and improve; compare alternatives with trade-offs."]},
+      {"label": "Close", "items": ["Summarize, name the risks and what you would measure first, and how the system would evolve."]}
+    ],
+    "followups": [{"q": "What if you get stuck?", "a": "Say what you know, state the trade-off you are weighing, make a reasonable decision with its reason, and move on. Interviewers value structured reasoning over perfection."}]
+  }
+]

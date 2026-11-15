@@ -1,0 +1,244 @@
+{
+  "foundations": {
+    "mustKnow": [
+      "Explain the GIL, and when threads, processes or asyncio are the right tool",
+      "Explain what a container really is (namespaces + cgroups + layered filesystem)",
+      "Trace a full HTTPS request: DNS, TCP, TLS 1.3, HTTP/2, response",
+      "Process vs thread, what a context switch costs, and how epoll scales one thread to thousands of sockets",
+      "Rebase vs merge, and trunk-based development vs long-lived branches",
+      "Big-O of the operations on dict, list, heap, deque, and balanced trees",
+      "Why SSE (not WebSockets) is the default for LLM token streaming",
+      "How to design an API that is safe to retry (idempotency keys, status codes)"
+    ],
+    "mustDo": [
+      "Ship a typed, tested Python package (uv + pytest + ruff + mypy) with CI",
+      "Write an async crawler/client with a semaphore, timeouts, retries with jitter and graceful cancellation",
+      "Diagnose a deliberately slow service using py-spy, strace and ss",
+      "Solve 60+ DSA problems across arrays, graphs, heaps, DP and sliding window",
+      "Containerize an app with a multi-stage, non-root Dockerfile under 200 MB",
+      "Set up pre-commit hooks with secret scanning"
+    ],
+    "configs": [
+      {
+        "title": "pyproject.toml with lint, types and tests",
+        "lang": "toml",
+        "note": "Baseline for every Python repo you start.",
+        "code": "[project]\nname = \"myapp\"\nversion = \"0.1.0\"\nrequires-python = \">=3.12\"\ndependencies = [\"pydantic>=2\", \"httpx>=0.27\", \"tenacity>=8\"]\n\n[dependency-groups]\ndev = [\"pytest>=8\", \"pytest-asyncio\", \"ruff\", \"mypy\", \"hypothesis\"]\n\n[tool.ruff]\nline-length = 100\n[tool.ruff.lint]\nselect = [\"E\", \"F\", \"I\", \"B\", \"UP\", \"ASYNC\", \"S\"]\n\n[tool.mypy]\nstrict = true\n\n[tool.pytest.ini_options]\nasyncio_mode = \"auto\"\naddopts = \"-q --strict-markers\""
+      },
+      {
+        "title": ".pre-commit-config.yaml",
+        "lang": "yaml",
+        "note": "Blocks leaked secrets and bad formatting before they reach the repo.",
+        "code": "repos:\n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.8.0\n    hooks:\n      - id: ruff\n        args: [--fix]\n      - id: ruff-format\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.21.2\n    hooks:\n      - id: gitleaks\n  - repo: https://github.com/pre-commit/pre-commit-hooks\n    rev: v5.0.0\n    hooks:\n      - id: check-added-large-files\n      - id: end-of-file-fixer"
+      },
+      {
+        "title": "Safe bash script header",
+        "lang": "bash",
+        "note": "Fail fast, no unset variables, trap cleanup.",
+        "code": "#!/usr/bin/env bash\nset -euo pipefail\nIFS=$'\\n\\t'\n\ntmp=\"$(mktemp -d)\"\ntrap 'rm -rf \"$tmp\"' EXIT\n\nlog() { printf '[%s] %s\\n' \"$(date -u +%FT%TZ)\" \"$*\" >&2; }\nlog \"starting\""
+      }
+    ]
+  },
+  "math-ml": {
+    "mustKnow": [
+      "Derive backprop for a 2-layer MLP on paper",
+      "Why cross-entropy for classification (MLE view) and what perplexity means",
+      "Bias-variance trade-off and how to read learning curves",
+      "Precision/recall/ROC-AUC/PR-AUC: which one for imbalanced data and why",
+      "Data leakage: three concrete examples and how to prevent them",
+      "What SVD and low-rank structure give you (PCA, LoRA)",
+      "Adam vs AdamW; why warmup and decay schedules help",
+      "How temperature, top-k and top-p reshape a distribution"
+    ],
+    "mustDo": [
+      "Implement logistic regression and an MLP in pure NumPy with gradient checking",
+      "Re-implement micrograd (autograd engine) from scratch",
+      "Run a Kaggle-style tabular project with leakage-safe CV and gradient boosting",
+      "Write a SQL analysis with window functions on a real dataset",
+      "Run an A/B test power calculation and a bootstrap confidence interval"
+    ],
+    "configs": [
+      {
+        "title": "Leakage-safe scikit-learn pipeline",
+        "lang": "python",
+        "note": "Preprocessing inside the CV loop so the validation fold never leaks.",
+        "code": "from sklearn.compose import ColumnTransformer\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.preprocessing import OneHotEncoder, StandardScaler\nfrom sklearn.ensemble import HistGradientBoostingClassifier\nfrom sklearn.model_selection import StratifiedKFold, cross_val_score\n\npre = ColumnTransformer([\n    (\"num\", StandardScaler(), num_cols),\n    (\"cat\", OneHotEncoder(handle_unknown=\"ignore\"), cat_cols),\n])\nmodel = Pipeline([(\"pre\", pre), (\"clf\", HistGradientBoostingClassifier())])\ncv = StratifiedKFold(5, shuffle=True, random_state=0)\nscores = cross_val_score(model, X, y, cv=cv, scoring=\"average_precision\")\nprint(scores.mean(), scores.std())"
+      }
+    ]
+  },
+  "deep-learning": {
+    "mustKnow": [
+      "Write scaled dot-product attention with shapes, masking and complexity O(n^2 d)",
+      "Compute KV-cache memory per token and per request for a given model",
+      "Why RoPE, GQA, RMSNorm, SwiGLU became the modern default",
+      "Training memory per parameter with Adam in mixed precision (about 16 bytes)",
+      "What FlashAttention changes (IO-awareness) and what it does NOT change (exactness)",
+      "SFT vs RLHF vs DPO vs GRPO: what each optimizes and when to use it",
+      "Chinchilla vs inference-optimal training of small models",
+      "LoRA: what is frozen, what is trained, and the memory savings"
+    ],
+    "mustDo": [
+      "Implement a GPT from scratch and train it on a small corpus until it generates coherent text",
+      "Implement multi-head attention, RoPE and a KV cache by hand and verify against a reference",
+      "Fine-tune a 1-8B model with LoRA/QLoRA on a narrow task and evaluate before/after",
+      "Profile a training step and find the bottleneck (data loader, compute, comms)",
+      "Reproduce a loss curve with and without warmup to see the effect"
+    ],
+    "configs": [
+      {
+        "title": "Training loop essentials (bf16, grad accumulation, clipping)",
+        "lang": "python",
+        "note": "The five lines that prevent most training bugs.",
+        "code": "import torch\nopt = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), weight_decay=0.1)\nsched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=3e-4, total_steps=total_steps, pct_start=0.05)\naccum = 8\nfor step, (x, y) in enumerate(loader):\n    with torch.autocast(\"cuda\", dtype=torch.bfloat16):\n        loss = model(x.cuda(), y.cuda()) / accum\n    loss.backward()\n    if (step + 1) % accum == 0:\n        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)\n        opt.step(); sched.step(); opt.zero_grad(set_to_none=True)"
+      },
+      {
+        "title": "LoRA with PEFT + TRL",
+        "lang": "python",
+        "note": "Starting point; tune rank and target modules to the task.",
+        "code": "from peft import LoraConfig\nfrom trl import SFTConfig, SFTTrainer\n\nlora = LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05,\n                  target_modules=\"all-linear\", task_type=\"CAUSAL_LM\")\ncfg = SFTConfig(output_dir=\"out\", num_train_epochs=2, per_device_train_batch_size=4,\n                gradient_accumulation_steps=4, learning_rate=2e-4, bf16=True,\n                logging_steps=10, lr_scheduler_type=\"cosine\", warmup_ratio=0.03)\ntrainer = SFTTrainer(model=model_id, train_dataset=ds, args=cfg, peft_config=lora)\ntrainer.train()"
+      }
+    ]
+  },
+  "llm-engineering": {
+    "mustKnow": [
+      "How to get reliable structured output (schema-constrained decoding, validation + retry)",
+      "How prompt caching works and how to lay out a prompt to hit the cache",
+      "Prefill vs decode, TTFT vs inter-token latency, and which knobs affect each",
+      "Continuous batching, PagedAttention, quantization trade-offs, speculative decoding",
+      "Prompting vs RAG vs fine-tuning decision framework with real examples",
+      "Backoff with jitter, provider fallbacks and idempotent retries for LLM calls",
+      "Cost model: tokens in/out, cache reads, batch discounts, per-feature unit economics"
+    ],
+    "mustDo": [
+      "Build a provider-agnostic LLM client with retries, fallbacks, cost tracking and streaming",
+      "Serve an open model with vLLM and benchmark TTFT/throughput at different batch sizes",
+      "Quantize a model (AWQ or GGUF) and measure quality loss on your own eval set",
+      "Build a model router that sends easy queries to a small model and measure savings",
+      "Fine-tune and compare against a strong prompt baseline honestly"
+    ],
+    "configs": [
+      {
+        "title": "Messages API: system prompt cache + streaming + tool",
+        "lang": "python",
+        "note": "Static content first and marked cacheable; dynamic content last.",
+        "code": "import anthropic\nclient = anthropic.Anthropic()\n\nwith client.messages.stream(\n    model=\"claude-sonnet-5-5\",\n    max_tokens=1024,\n    system=[{\"type\": \"text\", \"text\": LONG_STATIC_INSTRUCTIONS,\n             \"cache_control\": {\"type\": \"ephemeral\"}}],\n    tools=[{\"name\": \"get_order\", \"description\": \"Look up an order by id\",\n            \"input_schema\": {\"type\": \"object\",\n                             \"properties\": {\"order_id\": {\"type\": \"string\"}},\n                             \"required\": [\"order_id\"]}}],\n    messages=[{\"role\": \"user\", \"content\": user_text}],\n) as stream:\n    for text in stream.text_stream:\n        print(text, end=\"\", flush=True)\n    final = stream.get_final_message()\nprint(final.usage)"
+      },
+      {
+        "title": "Retry with jitter (tenacity)",
+        "lang": "python",
+        "note": "Retry only retryable errors; cap total time.",
+        "code": "from tenacity import retry, wait_random_exponential, stop_after_delay, retry_if_exception_type\nimport anthropic\n\n@retry(\n    retry=retry_if_exception_type((anthropic.RateLimitError, anthropic.APIConnectionError,\n                                   anthropic.InternalServerError)),\n    wait=wait_random_exponential(multiplier=1, max=30),\n    stop=stop_after_delay(90),\n    reraise=True,\n)\ndef call(**kw):\n    return client.messages.create(**kw)"
+      },
+      {
+        "title": "Serve a model with vLLM",
+        "lang": "bash",
+        "note": "OpenAI-compatible endpoint on :8000. Tune max-model-len and memory utilization to your GPU.",
+        "code": "vllm serve meta-llama/Llama-3.1-8B-Instruct \\\n  --max-model-len 8192 \\\n  --gpu-memory-utilization 0.90 \\\n  --enable-prefix-caching \\\n  --max-num-seqs 128 \\\n  --port 8000\n\n# smoke test\ncurl localhost:8000/v1/chat/completions -H 'content-type: application/json' -d '{\n  \"model\": \"meta-llama/Llama-3.1-8B-Instruct\",\n  \"messages\": [{\"role\":\"user\",\"content\":\"hi\"}], \"stream\": true }'"
+      }
+    ]
+  },
+  "rag": {
+    "mustKnow": [
+      "Why retrieval quality is capped by chunking and metadata, not just the embedding model",
+      "Hybrid search with reciprocal rank fusion, and why rerankers help",
+      "How HNSW works and its three knobs (M, efConstruction, efSearch)",
+      "How to tell whether a bad answer is a retrieval failure or a generation failure",
+      "Permission-aware retrieval: pre-filter vs post-filter and their failure modes",
+      "Recall@k, MRR, nDCG, faithfulness, answer relevance",
+      "When long context beats RAG, and when it does not"
+    ],
+    "mustDo": [
+      "Build a RAG system over a real corpus with hybrid retrieval and a reranker",
+      "Create a 100+ query golden set and report recall@k before/after each change",
+      "Implement ACL-filtered retrieval and prove it with a leak test",
+      "Run an embedding model bake-off on your own data",
+      "Do a blue/green re-embedding of an index with zero downtime"
+    ],
+    "configs": [
+      {
+        "title": "pgvector schema with hybrid search",
+        "lang": "sql",
+        "note": "Vector + full-text in one Postgres. Good default until you outgrow it.",
+        "code": "CREATE EXTENSION IF NOT EXISTS vector;\nCREATE TABLE chunks (\n  id bigserial PRIMARY KEY,\n  doc_id text NOT NULL,\n  content text NOT NULL,\n  acl text[] NOT NULL DEFAULT '{}',\n  embedding vector(1024) NOT NULL,\n  tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED\n);\nCREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);\nCREATE INDEX ON chunks USING gin (tsv);\n\n-- query time\nSET hnsw.ef_search = 100;\nSELECT id, content FROM chunks\nWHERE acl && $2::text[]\nORDER BY embedding <=> $1\nLIMIT 50;"
+      },
+      {
+        "title": "Reciprocal rank fusion",
+        "lang": "python",
+        "note": "Merge dense and sparse rankings without calibrating scores.",
+        "code": "def rrf(rankings: list[list[str]], k: int = 60) -> list[str]:\n    scores: dict[str, float] = {}\n    for ranking in rankings:\n        for rank, doc_id in enumerate(ranking, start=1):\n            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)\n    return sorted(scores, key=scores.get, reverse=True)\n\nfused = rrf([dense_ids, bm25_ids])[:50]\nfinal = rerank(query, fused)[:8]"
+      }
+    ]
+  },
+  "agents": {
+    "mustKnow": [
+      "Workflows vs agents, and the five core workflow patterns",
+      "The full lifecycle of a tool call, including error returns the model can act on",
+      "Compounding reliability: 0.95^20 is about 36 percent, and the mitigations",
+      "Context management strategies for long runs (compaction, notes, sub-agents)",
+      "When multi-agent helps (parallelizable, high value) and when it just burns tokens",
+      "MCP: roles of host, client and server; transports; auth model",
+      "Durable execution and idempotency keys for side-effecting tools",
+      "The common failure taxonomy: specification, planning, tool misuse, memory, coordination"
+    ],
+    "mustDo": [
+      "Write a tool-calling agent loop from scratch with step, token and time budgets",
+      "Build an MCP server with 3 well-designed tools and test it from a client",
+      "Add checkpointing so a killed run resumes without repeating side effects",
+      "Build an orchestrator-worker research agent that fans out in parallel",
+      "Build a trajectory eval: success rate, steps, cost, tool-error rate",
+      "Red-team your own agent with prompt-injection payloads in tool results"
+    ],
+    "configs": [
+      {
+        "title": "Minimal agent loop with budgets",
+        "lang": "python",
+        "note": "The skeleton every framework wraps. Know it cold.",
+        "code": "import time, anthropic\nclient = anthropic.Anthropic()\n\ndef run(task, tools, handlers, max_steps=15, max_seconds=120, max_tokens_total=60_000):\n    messages = [{\"role\": \"user\", \"content\": task}]\n    start, used = time.time(), 0\n    for step in range(max_steps):\n        if time.time() - start > max_seconds or used > max_tokens_total:\n            return {\"status\": \"budget_exceeded\", \"messages\": messages}\n        r = client.messages.create(model=\"claude-sonnet-5-5\", max_tokens=2048,\n                                   tools=tools, messages=messages)\n        used += r.usage.input_tokens + r.usage.output_tokens\n        messages.append({\"role\": \"assistant\", \"content\": r.content})\n        if r.stop_reason != \"tool_use\":\n            return {\"status\": \"done\", \"messages\": messages}\n        results = []\n        for b in r.content:\n            if b.type == \"tool_use\":\n                try:\n                    out, err = handlers[b.name](**b.input), False\n                except Exception as e:\n                    out, err = f\"Error: {e}\", True   # let the model see and recover\n                results.append({\"type\": \"tool_result\", \"tool_use_id\": b.id,\n                                \"content\": str(out)[:8000], \"is_error\": err})\n        messages.append({\"role\": \"user\", \"content\": results})\n    return {\"status\": \"max_steps\", \"messages\": messages}"
+      },
+      {
+        "title": "MCP server (FastMCP)",
+        "lang": "python",
+        "note": "Tool names and docstrings are the interface the model sees. Write them for the model.",
+        "code": "from mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"tickets\")\n\n@mcp.tool()\ndef search_tickets(query: str, status: str = \"open\", limit: int = 10) -> str:\n    \"\"\"Search support tickets by free text. status is one of: open, closed, all.\n    Returns up to `limit` results as 'ID | title | status'. Use get_ticket for details.\"\"\"\n    ...\n\n@mcp.tool()\ndef get_ticket(ticket_id: str) -> str:\n    \"\"\"Get one ticket's full thread by id (for example 'T-1042').\"\"\"\n    ...\n\nif __name__ == \"__main__\":\n    mcp.run()  # stdio by default"
+      }
+    ]
+  },
+  "evals-observability": {
+    "mustKnow": [
+      "Error analysis first: read traces, categorize, then design metrics",
+      "Code graders vs LLM judges vs human review, and judge calibration",
+      "Trajectory vs outcome evals for agents",
+      "How to gate releases on evals and avoid overfitting the eval set",
+      "What to log per LLM call to debug production",
+      "Online evals on sampled traffic and the feedback flywheel",
+      "Statistical noise in LLM metrics: repeats, confidence intervals"
+    ],
+    "mustDo": [
+      "Read 100 real traces and write a failure taxonomy with counts",
+      "Build a 150-case golden set with graders and wire it into CI",
+      "Calibrate an LLM judge against 50 human labels (report agreement)",
+      "Instrument an app with OpenTelemetry/Langfuse and build a cost+latency dashboard",
+      "Run a shadow deployment comparing a new model on live traffic"
+    ],
+    "configs": [
+      {
+        "title": "Eval harness as pytest with a threshold gate",
+        "lang": "python",
+        "note": "Make a quality regression fail the build.",
+        "code": "import json, statistics, pytest\n\nCASES = [json.loads(l) for l in open(\"evals/golden.jsonl\")]\n\n@pytest.mark.parametrize(\"case\", CASES, ids=lambda c: c[\"id\"])\ndef test_case(case, results):\n    out = run_agent(case[\"input\"])\n    results[case[\"id\"]] = grade(out, case)  # returns 0..1\n\ndef test_overall(results):\n    mean = statistics.mean(results.values())\n    assert mean >= 0.82, f\"quality regressed: {mean:.3f} < 0.82\""
+      },
+      {
+        "title": "LLM-judge rubric prompt",
+        "lang": "text",
+        "note": "Binary criteria beat 1-10 scores. Ask for reasoning before the verdict.",
+        "code": "You are grading an assistant answer against a reference.\nCriteria (answer each true/false):\n1. grounded: every claim is supported by the provided context.\n2. complete: covers all parts of the question.\n3. no_hallucination: contains no invented facts, names or numbers.\nThink step by step briefly, then output JSON only:\n{\"grounded\": bool, \"complete\": bool, \"no_hallucination\": bool, \"reason\": \"...\"}"
+      },
+      {
+        "title": "OpenTelemetry OTLP tracing setup",
+        "lang": "python",
+        "note": "Send spans to Langfuse, Phoenix, Tempo or any OTLP backend.",
+        "code": "from opentelemetry import trace\nfrom opentelemetry.sdk.trace import TracerProvider\nfrom opentelemetry.sdk.trace.export import BatchSpanProcessor\nfrom opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter\n\nprovider = TracerProvider()\nprovider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=\"http://localhost:4318/v1/traces\")))\ntrace.set_tracer_provider(provider)\ntracer = trace.get_tracer(\"agent\")\n\nwith tracer.start_as_current_span(\"llm.call\") as span:\n    span.set_attribute(\"gen_ai.request.model\", model)\n    r = call_llm(...)\n    span.set_attribute(\"gen_ai.usage.input_tokens\", r.usage.input_tokens)\n    span.set_attribute(\"gen_ai.usage.output_tokens\", r.usage.output_tokens)"
+      }
+    ]
+  }
+}

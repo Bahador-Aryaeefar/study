@@ -1,0 +1,331 @@
+{
+  "request-path": {
+    "deep": [
+      {
+        "title": "Latency budget of a typical request",
+        "body": "Approximate costs to carry in your head:\n\n- DNS lookup: 1-50 ms uncached (often cached: 0).\n- TCP handshake: 1 RTT. TLS 1.3 adds 1 RTT (TLS 1.2: 2). Reused connections skip both. Same-region RTT about 1 ms, cross-continent 70-150 ms.\n- Load balancer and gateway hop: 1-3 ms.\n- Application logic: 1-20 ms.\n- Cache read (Redis, same AZ): 0.3-1 ms. Database indexed read: 1-10 ms; cross-region 100+ ms.\n- Disk: SSD random read ~0.1 ms; HDD seek ~10 ms. Memory reference ~100 ns.\n\nExample budget for a 200 ms p95 target: edge/TLS 40 ms, gateway 5 ms, service 20 ms, 3 sequential downstream calls at 25 ms each = 75 ms, DB 15 ms, serialization and response 10 ms = about 165 ms. Sequential calls add up; parallelize independent ones so latency becomes the max, not the sum.\n\nTail latency: if one request fans out to N backends and each has a 1% chance of being slow, the chance that at least one is slow is 1 − 0.99^N: 10 backends gives 9.6%, 100 gives 63%. This is why p99 of components matters and why hedged requests, timeouts and fewer fan-outs help.\n\nLittle's law links these: concurrency in flight L = arrival rate λ × latency W. At 2,000 req/s and 50 ms you hold about 100 requests in flight."
+      }
+    ]
+  },
+  "estimator": {
+    "deep": [
+      {
+        "title": "Numbers every engineer should know",
+        "body": "Time: 1 day = 86,400 s (~10^5). 1 month ~ 2.6M s. 1 year ~ 31.5M s (~3 × 10^7).\n\nPowers of two: 2^10 = 1 KB, 2^20 = 1 MB, 2^30 = 1 GB, 2^40 = 1 TB.\n\nLatency: L1 cache 1 ns, main memory 100 ns, SSD read 100 µs, network same datacenter 0.5 ms, HDD seek 10 ms, cross-continent round trip 150 ms.\n\nThroughput rules of thumb: a single web server handles roughly 1k-10k simple requests/s; Redis ~100k ops/s per node; Postgres ~5k-20k simple writes/s on a good machine, more reads with replicas; Kafka a broker handles ~100s of MB/s; one 1 Gbps link = 125 MB/s.\n\nAvailability: 99.9% = 8.8 h/year downtime, 99.99% = 52 min/year, 99.999% = 5 min/year.\n\nThe recipe: (1) state assumptions (DAU, actions per user per day, read:write ratio, object size, peak factor 2-5x, retention); (2) QPS = daily requests / 86,400, then × peak; (3) storage/day = writes/day × size, × replication (3x) and growth; (4) bandwidth = QPS × payload size; (5) servers = peak QPS / per-server capacity with 30-50% headroom; (6) cache memory = hot working set.\n\nWorked example, URL shortener: 100M new URLs/month = 40 writes/s average, 100:1 reads = 4,000 reads/s average, ~12k at 3x peak. Record 500 B × 100M/month × 12 × 5 years = 3 TB. Fits one sharded or even a single large database; reads are cache-friendly, so the design is about caching and ID generation, not about heavy sharding."
+      }
+    ]
+  },
+  "networking-essentials": {
+    "deep": [
+      {
+        "title": "TCP, TLS, HTTP versions and DNS essentials",
+        "body": "TCP: reliable, ordered byte stream; 3-way handshake; congestion control (slow start grows the window exponentially, then linear); head-of-line blocking when a packet is lost. Nagle's algorithm and delayed ACKs can add latency for small writes.\n\nTLS 1.3: 1 RTT handshake (0-RTT resumption possible with replay caveats). Terminate TLS at the edge or load balancer; use mTLS between services for identity.\n\nHTTP/1.1: one request at a time per connection (browsers open ~6 in parallel); keep-alive reuses connections. HTTP/2: multiplexed streams over one connection, header compression; TCP-level head-of-line blocking remains. HTTP/3 (QUIC over UDP): independent streams, faster handshakes, connection migration.\n\ngRPC: HTTP/2 + protobuf, strongly typed, streaming, deadlines. Choose it between services; use REST/JSON for public APIs.\n\nDNS: hierarchical resolution (root, TLD, authoritative), caching governed by TTL. Used for load distribution (round-robin, GeoDNS, latency routing) and failover, but TTL delays and client caching make failover slow, so combine with health checks and low TTLs on critical records. Anycast announces one IP from many locations.\n\nProxies: forward proxy (client side), reverse proxy (server side: TLS, caching, compression, routing). NAT and many users sharing one IP are why IP-based limiting is unreliable.\n\nConnection pooling: opening connections per request wastes RTTs and server resources; pool and reuse them, size pools sensibly (too many connections overload a database; use a pooler such as PgBouncer).\n\nTimeouts: connect timeout (short), read timeout (matches the operation), overall deadline."
+      }
+    ],
+    "compare": [
+      {
+        "title": "HTTP versions",
+        "head": ["Version", "Transport", "Multiplexing", "Head-of-line blocking", "Handshake", "Notes"],
+        "rows": [
+          ["HTTP/1.1", "TCP", "No (parallel connections)", "Yes, per connection", "TCP + TLS", "Keep-alive, ubiquitous"],
+          ["HTTP/2", "TCP", "Yes", "At TCP level on loss", "TCP + TLS", "Header compression, gRPC base"],
+          ["HTTP/3", "QUIC (UDP)", "Yes", "No (per stream)", "Combined, 0-1 RTT", "Better on lossy mobile networks"]
+        ]
+      }
+    ]
+  },
+  "api-design": {
+    "deep": [
+      {
+        "title": "REST vs gRPC vs GraphQL and pagination",
+        "body": "REST: resources and HTTP verbs, cacheable GETs, easy to debug, ubiquitous. Weak spots: over-fetching, many round trips for nested data, loose contracts (OpenAPI helps).\n\ngRPC: protobuf contracts, code generation, streaming, deadlines, efficient binary encoding; poor browser support without gRPC-web; harder to inspect.\n\nGraphQL: client chooses fields, one round trip for a graph. Costs: resolver N+1 problems (use DataLoader batching), query cost control (depth and complexity limits, persisted queries), caching is harder, authorization per field.\n\nPagination: offset (page=3&size=20) is simple but slow for deep pages (database scans and discards rows) and unstable when data changes. Keyset/cursor (WHERE (created_at, id) < (?, ?) ORDER BY created_at DESC, id DESC LIMIT n) is fast at any depth and stable; return an opaque cursor token.\n\nVersioning: URL or header versions, additive changes only (new optional fields), deprecation with telemetry on usage and a sunset date. Never remove or change meaning of fields silently.\n\nErrors: consistent shape, correct status codes (4xx caller error, 5xx server), machine-readable codes, retry guidance (429 and 503 with Retry-After).\n\nIdempotency: PUT and DELETE are idempotent by definition; POST needs an Idempotency-Key. Use ETags/If-Match for optimistic concurrency and conditional requests.\n\nSecurity: authenticate (OAuth2/OIDC tokens, API keys), authorize at the resource, validate inputs, rate limit, avoid leaking internal ids or stack traces."
+      }
+    ],
+    "compare": [
+      {
+        "title": "API styles",
+        "head": ["Style", "Contract", "Payload", "Streaming", "Caching", "Best for"],
+        "rows": [
+          ["REST/JSON", "OpenAPI (optional)", "Text, verbose", "Limited (SSE)", "Excellent (HTTP)", "Public APIs, simple CRUD"],
+          ["gRPC", "Protobuf (strict)", "Binary, compact", "Bidirectional", "Manual", "Internal service calls"],
+          ["GraphQL", "Schema (strict)", "JSON, client-shaped", "Subscriptions", "Hard", "Varied clients, rich graphs"],
+          ["WebSocket/SSE", "Custom", "Any", "Yes", "None", "Push and live updates"]
+        ]
+      }
+    ]
+  },
+  "data-modeling": {
+    "deep": [
+      {
+        "title": "Normalization, denormalization and modeling for access patterns",
+        "body": "Normalize (3NF): each fact stored once; updates are simple and consistent; reads need joins. Good for write-heavy transactional data.\n\nDenormalize: duplicate data to avoid joins on hot reads (store author name on each post). Faster reads, but updates touch many rows and copies can drift; keep them consistent with transactions, events or periodic repair.\n\nRelational modeling steps: entities and relationships, keys, constraints, then indexes from the actual queries.\n\nDocument modeling: embed data that is read together and bounded in size; reference when the related set is large, shared or changes independently.\n\nWide-column / DynamoDB modeling (query first): list every access pattern, then design one table per query shape. Choose the partition key to spread load and the sort key to order and range-query within the partition. Single-table design puts several entity types in one table with overloaded keys (PK = USER#42, SK = ORDER#2024-05-01#17) so one query returns an aggregate. Global secondary indexes add alternate access paths (eventually consistent, cost write capacity).\n\nTime-series modeling: partition by time bucket plus series id to bound partition size; avoid unbounded partitions.\n\nEvolving schemas: expand and contract migrations (add nullable column, backfill, switch code, drop old column), avoid long locks (online DDL tools, batched backfills), and keep consumers backward compatible."
+      }
+    ]
+  },
+  "scaling-reads-writes": {
+    "deep": [
+      {
+        "title": "A ladder of scaling moves, cheapest first",
+        "body": "Reads: (1) fix queries and indexes, (2) cache hot reads, (3) read replicas (watch lag), (4) CDN for public content, (5) denormalized read models or materialized views, (6) search or analytics store for heavy queries, (7) shard.\n\nWrites: (1) batch and bulk insert (one transaction with 1,000 rows beats 1,000 transactions), (2) remove unnecessary indexes and synchronous work, (3) async via queue to smooth bursts, (4) vertical scale, (5) partition and shard by key, (6) switch to a write-optimized store (LSM, log), (7) relax consistency (counters, buffering).\n\nKnow the arithmetic. A single Postgres primary typically sustains thousands to tens of thousands of simple writes/s. If you need 200k writes/s, shard across at least 10-20 primaries or use a log-structured store; if reads are 50k/s with a 95% cache hit rate the database sees 2.5k/s.\n\nSignals to move up the ladder: sustained CPU or IOPS saturation, replication lag growth, lock contention, p99 latency rising with load, storage limits. Do not shard because the dataset is large; shard because one node cannot serve the write rate or fit the working set.\n\nCosts of each step: replicas (staleness), caches (invalidation), sharding (cross-shard queries, resharding), queues (eventual consistency, ordering). State the cost when you choose."
+      }
+    ]
+  },
+  "large-blobs": {
+    "deep": [
+      {
+        "title": "Multipart upload and delivery design",
+        "body": "Why not through the app server: it ties up connections and bandwidth, adds hops, and one slow client holds a worker. Use pre-signed URLs so clients talk to object storage directly; authorization is baked into the signed URL with an expiry and constraints (size, content type).\n\nMultipart/resumable upload: split into parts (5-100 MB), upload in parallel, retry failed parts independently, then complete; a part-level checksum (MD5/CRC32C) verifies integrity. Resumable uploads track committed offset so a mobile client resumes after a dropped connection.\n\nProcessing pipeline: storage event (S3 event notification) triggers a queue message; workers scan for malware, transcode (video: split into segments, encode to several bitrates, produce HLS/DASH manifests), generate thumbnails, extract metadata; status moves pending, processing, ready, failed.\n\nDelivery: CDN in front with signed URLs or cookies for private content, range requests for seeking, adaptive bitrate streaming for video.\n\nDurability and cost: object stores give 11 nines durability through replication or erasure coding (e.g., 10+4 stores 1.4x instead of 3x). Lifecycle rules move cold data to cheaper tiers (infrequent access, archive). Dedupe by content hash (store each unique blob once, reference counting).\n\nCapacity example: 1M uploads/day × 5 MB = 5 TB/day = ~58 MB/s ingest, trivially handled by object storage but not by funneling through a few app servers."
+      }
+    ]
+  },
+  "long-running": {
+    "deep": [
+      {
+        "title": "Job patterns, workflow engines and checkpoints",
+        "body": "Async request pattern: POST creates a job and returns 202 Accepted with a job id and a status URL; the client polls (with Retry-After guidance), subscribes via SSE/WebSocket, or receives a webhook. Store job state (queued, running, succeeded, failed, canceled) with timestamps and progress.\n\nWorkers: pull from a queue; use visibility timeouts and heartbeats so crashed workers' jobs return to the queue; make each step idempotent; use max attempts with backoff then a dead-letter queue.\n\nWorkflow engines (Temporal, Cadence, AWS Step Functions, Airflow for batch DAGs): persist an event history of the workflow; the workflow code is deterministic and replayed after failures; activities (side effects) are retried with policies; durable timers, signals (human approval), child workflows and compensation. Prefer them when a process spans minutes to days, has several steps, or needs visibility and retries.\n\nCheckpointing: for long computations and agent runs, persist intermediate state so a crash resumes from the last checkpoint rather than restarting; store inputs and outputs of each step.\n\nScheduling and fairness: per-tenant queues or weighted fair queuing so one heavy tenant does not starve the others; priorities; autoscale workers on queue depth and oldest message age.\n\nCancellation and timeouts: propagate cancel signals, enforce deadlines, and clean up partial work."
+      }
+    ]
+  },
+  "gateway": {
+    "deep": [
+      {
+        "title": "LLM gateway responsibilities in detail",
+        "body": "Request path: authenticate the caller, resolve tenant and plan, enforce rate limits (requests and tokens per minute) and budgets, validate and redact input (PII, secrets), check exact and semantic caches, choose the model by policy (cost tiers, latency, capabilities), call the provider with timeouts, stream tokens back, apply output guardrails, record usage.\n\nRouting and fallback: ordered provider list per model class; circuit breaker per provider; retry on 429/5xx with backoff to the next provider; map parameters between provider APIs; note that fallback models behave differently, so evaluate them.\n\nCaching: exact-match cache keyed by hash of (model, messages, parameters) for deterministic calls; semantic cache by embedding similarity with a high threshold and tenant isolation (risky for personalized or time-sensitive prompts); provider prompt caching to reduce cost for long shared prefixes.\n\nCost control: per-tenant and per-key budgets, alerts, hard stops, token estimation before the call and reconciliation after. Cost per request = input_tokens × input_price + output_tokens × output_price (+ cache read/write prices).\n\nObservability: log prompt/response metadata (or content with consent and redaction), tokens, latency (time to first token, tokens per second), cost, provider, cache hit, error class, with trace ids; sample content for evals.\n\nStreaming: proxy SSE without buffering; handle client disconnects by canceling the upstream request to stop paying for tokens.\n\nStatelessness and scale: gateway instances are stateless; limits and budgets live in Redis; config is versioned and hot-reloadable."
+      }
+    ]
+  },
+  "batching": {
+    "deep": [
+      {
+        "title": "Continuous batching, throughput math and tuning",
+        "body": "Static batching: wait for a batch, run all sequences until the longest finishes. Short sequences idle while waiting. Continuous (in-flight) batching: after each decode step, finished sequences leave and waiting requests join, so the GPU stays full.\n\nPrefill vs decode: prefill processes the whole prompt in parallel (compute-bound); decode generates one token per step per sequence (memory-bandwidth-bound: the weights are read from memory for every step). Because decode cost is dominated by reading weights, batching B sequences costs about the same time per step as one, so throughput rises almost linearly with B until compute or KV memory saturates.\n\nRough throughput: tokens/s per GPU ≈ B / step_time. If a decode step takes 30 ms for a batch of 64: 64 / 0.030 ≈ 2,130 tokens/s. Per-request speed is 1 / 0.030 ≈ 33 tokens/s. Raising B to 128 may stretch the step to 40 ms: 3,200 tokens/s total but 25 tokens/s per request. That is the throughput vs latency trade.\n\nKey metrics: TTFT (time to first token, dominated by queueing plus prefill), TPOT/ITL (time per output token, inter-token latency), throughput, and goodput (requests meeting the SLO).\n\nTechniques: chunked prefill (split long prompts so they do not stall decoding), prefill/decode disaggregation (separate GPU pools), speculative decoding (a small model proposes tokens verified in parallel by the big one), prefix caching, quantization (FP8/INT4 weights shrink memory traffic), tensor and pipeline parallelism for models larger than one GPU.\n\nCapacity planning: required GPUs ≈ peak tokens/s needed / tokens/s per GPU, plus headroom (30%) for spikes and failures; autoscale on queue depth and TTFT, since GPU cold start takes minutes."
+      }
+    ]
+  },
+  "kv-cache": {
+    "deep": [
+      {
+        "title": "KV cache formulas and memory planning",
+        "body": "Without a cache, generating token t recomputes keys and values for all previous tokens each step: O(n²) attention work overall. With a KV cache each step computes K and V only for the new token and attends over cached ones: per-step cost O(n).\n\nMemory per token = 2 × n_layers × n_kv_heads × head_dim × bytes_per_value. For a Llama-style 8B model (32 layers, 8 KV heads, head_dim 128, FP16 = 2 bytes): 2 × 32 × 8 × 128 × 2 = 131,072 bytes = 128 KiB per token. A 4k-token sequence uses 512 MiB; 128k tokens uses 16 GiB, per sequence. For a 70B model (80 layers, 8 KV heads): about 320 KiB per token, 40 GiB at 128k.\n\nHow many concurrent sequences fit: (GPU memory − weights − activations) / (tokens per sequence × bytes per token). An 80 GB GPU holding 16 GB of 8B weights has roughly 60 GB for cache: about 117 sequences at 4k tokens (60 GB / 0.5 GB).\n\nGrouped-query attention (GQA) shares K/V heads across query heads (for example 32 query heads, 8 KV heads) and cuts cache 4x versus multi-head attention; multi-query attention (1 KV head) cuts further.\n\nPagedAttention (vLLM): stores the cache in fixed-size blocks mapped through a block table, like virtual memory pages, eliminating fragmentation and over-reservation (naive allocation wasted 60-80% of cache memory) and enabling sharing of prefix blocks between requests with copy-on-write.\n\nPrefix caching: requests sharing a long identical prefix (system prompt, document) reuse its KV blocks, skipping prefill. Route such requests to the same replica for hits. Provider APIs expose this as prompt caching with discounted cached-input prices.\n\nOther levers: KV quantization (FP8/INT8), sliding-window attention (cache only the last W tokens), eviction of low-attention tokens, offloading to CPU or NVMe with prefetching, and shorter contexts via retrieval and summarization."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Attention variants and cache size",
+        "head": ["Variant", "KV heads", "Cache size (relative)", "Quality", "Used by"],
+        "rows": [
+          ["Multi-head (MHA)", "= query heads", "1x", "Baseline", "Original transformers, some older models"],
+          ["Grouped-query (GQA)", "Groups (e.g. 8)", "~1/4 (for 32 heads)", "Near MHA", "Llama 2/3 70B, Mistral"],
+          ["Multi-query (MQA)", "1", "~1/32", "Slight drop", "PaLM, Falcon"],
+          ["Multi-head latent (MLA)", "Compressed latent", "Much smaller", "Near MHA", "DeepSeek models"]
+        ]
+      }
+    ]
+  },
+  "rag-pipeline": {
+    "deep": [
+      {
+        "title": "Chunking, retrieval and reranking in depth",
+        "body": "Indexing: load documents, clean, chunk, embed, store vectors plus metadata (source, section, date, ACL/tenant), and also a keyword index.\n\nChunking: fixed-size (about 200-500 tokens, 10-20% overlap) is the baseline; recursive splitting on paragraphs and headings respects structure; semantic chunking splits where topic shifts; parent-child retrieval embeds small chunks for precision but returns the surrounding larger section for context; keep tables and code blocks intact. Prepend context (document title, section path) to each chunk, or generate a short LLM summary of its place in the document (contextual retrieval) to fix chunks that lose meaning in isolation.\n\nRetrieval: dense vectors capture meaning; BM25 captures exact terms, IDs and rare words. Hybrid search merges both ranked lists with Reciprocal Rank Fusion: score(d) = Σ 1 / (k + rank_i(d)), commonly k = 60. Retrieve a generous top-k (50-100), then rerank.\n\nReranking: a cross-encoder scores (query, passage) pairs jointly, more accurate than bi-encoder similarity but slower, so apply it only to the top candidates and keep the best 5-10. Query rewriting (expand, decompose multi-hop questions, HyDE hypothetical answers) improves recall.\n\nGeneration: put the best chunks first and last (models attend less to the middle), cite sources, instruct the model to say when the context does not contain the answer, and limit context size.\n\nEvaluation: retrieval metrics (recall@k, MRR, nDCG) on a labeled question set; generation metrics (faithfulness: claims supported by context; answer relevance; context precision) via LLM-judge plus human spot checks. Debug retrieval before touching the prompt.\n\nAdvanced: agentic RAG (the model decides what to search and iterates), graph RAG for relationship-heavy corpora, caching, incremental re-indexing with change detection, ACL-filtered retrieval, and freshness handling (time decay, metadata filters)."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Retrieval methods",
+        "head": ["Method", "Strength", "Weakness", "Cost", "Use"],
+        "rows": [
+          ["BM25 / keyword", "Exact terms, IDs, rare words", "Misses paraphrase", "Low", "Part of hybrid"],
+          ["Dense vectors", "Semantic similarity", "Misses exact identifiers, needs good embeddings", "Medium", "Part of hybrid"],
+          ["Hybrid + RRF", "Best of both", "Two indexes to run", "Medium", "Default for production"],
+          ["Cross-encoder rerank", "Highest precision", "Slow per pair", "Higher", "Top 50 to top 5"],
+          ["Long-context stuffing", "No retrieval errors", "Cost and attention dilution", "High per query", "Small corpora"]
+        ]
+      }
+    ]
+  },
+  "agent-loop": {
+    "flows": [
+      {
+        "title": "ReAct-style agent loop with guardrails",
+        "hint": "Think, act, observe until done or a limit trips.",
+        "nodes": [
+          {"id": "goal", "label": "Goal", "icon": "🎯"},
+          {"id": "llm", "label": "LLM", "sub": "plan next step", "icon": "🧠"},
+          {"id": "tool", "label": "Tool call", "sub": "validated", "icon": "🛠️"},
+          {"id": "obs", "label": "Observation", "icon": "👀"},
+          {"id": "done", "label": "Answer", "icon": "✅"}
+        ],
+        "steps": [
+          {"at": "goal", "note": "User goal plus system prompt, tool schemas and memory are assembled", "ms": 0},
+          {"at": "llm", "note": "Model reasons and chooses a tool call with JSON arguments (or decides it is done)", "ms": 1200},
+          {"at": "tool", "note": "Harness validates the arguments against the schema, checks permissions and budget, asks approval if risky, then executes in a sandbox", "ms": 300, "tone": "warn"},
+          {"at": "obs", "note": "Result (or the error message) is appended to the context; large outputs are truncated or summarized", "ms": 5},
+          {"at": "llm", "note": "Loop: the model sees the observation, fixes mistakes and chooses the next step. Step, token and time limits guard against endless loops", "ms": 1200},
+          {"at": "done", "note": "The model returns the final answer; the trace is stored for evaluation and replay", "ms": 5, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Workflow vs agent, reliability math and design patterns",
+        "body": "Patterns (from simplest to most autonomous): prompt chaining (fixed sequence of LLM calls with checks), routing (classify then dispatch), parallelization (fan out subtasks or vote), orchestrator-workers (a lead model delegates to workers), evaluator-optimizer (generate, critique, revise), and fully autonomous agents. Start at the simplest that works.\n\nReliability compounds: if each step succeeds with probability p, an n-step chain succeeds with p^n. At p = 0.95 and n = 10 that is 0.95^10 ≈ 60%. This is why you shorten chains, add verification steps, make tools forgiving, and use deterministic code for anything that can be deterministic.\n\nCost and latency scale with steps: total tokens grow roughly quadratically if each step re-sends the whole history (n steps × growing context). Control with context compaction/summarization, truncating tool outputs, caching the stable prefix, and sub-agents with isolated contexts.\n\nTool design: few, orthogonal, well-named tools; precise descriptions with examples; narrow argument schemas with enums; return structured, concise results; informative errors that tell the model how to fix the call; idempotent or confirmable side effects.\n\nMemory: short-term (conversation/context), working scratchpad or plan file, long-term (vector or key-value store of facts and past episodes) with retrieval and write policies.\n\nSafety: least privilege credentials, sandbox code execution and network, treat tool outputs and retrieved text as untrusted (prompt injection), human approval for irreversible actions, spend and step limits, audit logs.\n\nEvaluation: build a suite of realistic tasks with programmatic success checks; run on every prompt, tool or model change; track success rate, steps, cost and latency; replay failed traces; use trajectory-level and outcome-level graders."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Workflow vs agent",
+        "head": ["Aspect", "Workflow (predefined path)", "Agent (model decides)"],
+        "rows": [
+          ["Predictability", "High", "Lower"],
+          ["Cost and latency", "Lower, bounded", "Higher, variable"],
+          ["Flexibility", "Only anticipated cases", "Handles open-ended tasks"],
+          ["Testing", "Per step, deterministic checks", "Needs trajectory-level evals"],
+          ["Failure handling", "Explicit branches", "Model must recover; add guards"],
+          ["Choose when", "Steps are known", "Steps depend on intermediate results"]
+        ]
+      }
+    ]
+  },
+  "sql-vs-nosql": {
+    "compare": [
+      {
+        "title": "Database families at a glance",
+        "head": ["Family", "Query model", "Scaling", "Consistency", "Strength", "Weakness"],
+        "rows": [
+          ["Relational (Postgres, MySQL)", "SQL, joins, transactions", "Vertical + replicas, sharding is hard", "Strong ACID", "Flexible queries, integrity", "Horizontal write scaling"],
+          ["Key-value (Redis, DynamoDB)", "Get/put by key", "Horizontal", "Tunable", "Latency, scale", "No ad-hoc queries"],
+          ["Document (MongoDB)", "Query nested documents", "Horizontal (sharding)", "Tunable, transactions limited", "Flexible schema, aggregates", "Joins, cross-document integrity"],
+          ["Wide-column (Cassandra, Bigtable)", "Partition key + clustering", "Linear horizontal", "Tunable (AP leaning)", "Write throughput", "Query flexibility, modeling per query"],
+          ["Search (Elasticsearch)", "Inverted index, scoring", "Shards + replicas", "Near real-time", "Text, facets", "Not a system of record"],
+          ["Graph (Neo4j)", "Traversals", "Harder", "ACID (single)", "Relationship queries", "Scale-out"],
+          ["Columnar OLAP (ClickHouse, BigQuery)", "SQL analytics", "Horizontal", "Batch/eventual", "Scans, aggregates", "Row-level updates"],
+          ["Time-series", "Time-range queries", "Horizontal", "Varies", "Ingest, retention, downsampling", "General queries"],
+          ["Vector", "Nearest neighbor", "Horizontal", "Eventual", "Semantic search", "Exact filtering"]
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "A decision procedure you can say out loud",
+        "body": "1. List the top five queries and their rates. 2. State consistency needs per query (can it be stale, does it need a transaction?). 3. Estimate size and growth and the write rate. 4. If it fits one primary with replicas and needs joins and transactions: relational (Postgres). 5. If access is purely by key at huge scale with simple values: key-value store. 6. If writes are enormous and queries are known and partition-friendly: wide-column. 7. If you need text relevance or faceting: add a search index fed from the source of truth. 8. If analytics: stream or batch into a columnar warehouse. 9. If embeddings: pgvector first, dedicated vector database when scale or filtering demands it. 10. Say what you gave up.\n\nPolyglot persistence works when a single source of truth feeds derived stores via CDC or events; the derived stores are rebuildable. Avoid multiple writable sources of truth for the same data."
+      }
+    ]
+  },
+  "cdn": {
+    "deep": [
+      {
+        "title": "Cache keys, headers and invalidation",
+        "body": "Cache-Control: max-age (browser and shared caches), s-maxage (shared caches only, such as CDNs), public/private, no-store (never store), no-cache (store but revalidate), immutable (never changes while fresh), stale-while-revalidate (serve stale while refreshing in background), stale-if-error (serve stale when origin fails). Validation with ETag/If-None-Match and Last-Modified/If-Modified-Since returns 304 Not Modified without a body.\n\nCache key: by default URL (host, path, query). Including cookies, auth headers or random query params fragments the cache and destroys the hit rate; normalize query parameter order, drop tracking params, and use Vary carefully (Vary: Accept-Encoding is fine, Vary: Cookie is almost never).\n\nStrategy by content: fingerprinted assets (app.3f9c1.js): Cache-Control: public, max-age=31536000, immutable. HTML: short max-age or no-cache with ETag. APIs: s-maxage of seconds for public data with stale-while-revalidate. Private data: private or no-store, never in a shared cache.\n\nInvalidation: prefer versioned URLs (no purge needed); use purge-by-URL or surrogate-key/tag purge for urgent updates (propagation takes seconds); short TTL for hot dynamic data.\n\nOrigin protection: tiered caching/origin shield (edges miss to a regional parent, which misses to origin once), request coalescing, rate limiting, WAF; hit ratio target above 95% for static assets. Offload math: if origin capacity is 2k req/s and traffic is 100k req/s the CDN must absorb at least 98%.\n\nVideo: HLS/DASH split video into few-second segments at several bitrates; segments are immutable and cache beautifully; the manifest (short TTL for live) lists them."
+      }
+    ]
+  },
+  "search": {
+    "deep": [
+      {
+        "title": "Ranking formulas and index architecture",
+        "body": "TF-IDF: score(t, d) = tf(t, d) × idf(t), with idf(t) = log(N / df(t)) where N is the number of documents and df the number containing the term. Rare terms weigh more.\n\nBM25 (the modern default): score(d, q) = Σ over terms t in q of idf(t) × ( tf × (k1 + 1) ) / ( tf + k1 × (1 − b + b × |d| / avgdl) ), typically k1 ≈ 1.2 and b ≈ 0.75. Term frequency saturates (the 10th occurrence adds little) and long documents are normalized by length |d| relative to the average avgdl.\n\nIndex structure: an inverted index maps term to a postings list of (doc id, positions, tf), sorted by doc id and compressed (delta + variable-byte or bit-packing). Boolean AND is an intersection of sorted lists using skip pointers. Phrase queries use positions. Documents are stored in immutable segments; new documents go into a small in-memory segment that is flushed and later merged (the same LSM idea as storage engines); deletes are marked and applied at merge.\n\nDistributed search: shard the index by document id; each query fans out to every shard (scatter), each returns its local top-k with scores, the coordinator merges (gather). Latency is the slowest shard (tail latency again), so use replicas and hedged requests. Global IDF statistics differ per shard, which can skew scores slightly on small shards.\n\nTypeahead: build a trie or an index of popular queries with precomputed top suggestions per prefix; update from logs offline and with a fast path for trending queries; serve from memory/edge; debounce on the client; keep latency under about 50-100 ms. Fuzzy matching with edit distance via n-gram indexes or finite-state transducers.\n\nRelevance beyond text: freshness, popularity, personalization, click models, learning-to-rank with features, and a final rerank stage; measure with nDCG, MRR and online A/B tests."
+      }
+    ]
+  },
+  "microservices": {
+    "deep": [
+      {
+        "title": "When to split, and the hidden costs",
+        "body": "Signals that justify extraction: a component needs very different scaling or hardware (GPU inference), a team is blocked by shared release cycles, a part needs stricter isolation or compliance, or it has a different reliability target.\n\nHidden costs: every call becomes a network call with latency, partial failure and versioning concerns; transactions across services become sagas; debugging needs distributed tracing; you need service discovery, config, CI/CD per service, on-call ownership, and consistent observability. Latency math: a request that makes 5 sequential internal calls at p99 = 50 ms each can easily reach 250+ ms.\n\nBoundaries: align with business capabilities and data ownership (bounded contexts from domain-driven design). A good boundary means most changes touch one service and data is not shared. Signs of a bad split: services always deployed together, chatty synchronous chains, shared database tables, circular dependencies.\n\nModular monolith: one deployable with enforced module boundaries (separate packages, no cross-module table access, interfaces between modules). Gets most organizational benefits at far lower operational cost and keeps extraction possible.\n\nMigration: strangler fig. Put a routing layer in front, move one capability at a time behind it, keep data in sync (CDC) during the transition, switch traffic gradually (shadow, canary), and retire the old code.\n\nCommunication: synchronous (REST/gRPC) for queries needing an immediate answer; asynchronous events for notifications and data propagation; avoid long synchronous chains; use timeouts, retries with budgets and circuit breakers."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Monolith spectrum",
+        "head": ["Style", "Deploy", "Data", "Team fit", "Ops cost", "Main risk"],
+        "rows": [
+          ["Big-ball monolith", "One unit", "Shared, tangled", "Small teams", "Low", "Becomes unchangeable"],
+          ["Modular monolith", "One unit", "One DB, owned schemas per module", "Small to mid teams", "Low", "Boundaries erode without enforcement"],
+          ["Services (coarse)", "Few units", "Per-service DB", "Mid to large", "Medium", "Distributed monolith"],
+          ["Microservices (fine)", "Many units", "Per-service DB", "Large orgs", "High", "Latency, consistency, ops overhead"]
+        ]
+      }
+    ]
+  },
+  "observability": {
+    "deep": [
+      {
+        "title": "SLO math, burn rates and golden signals",
+        "body": "Error budget = 1 − SLO. A 99.9% SLO over 30 days allows 0.1% × 43,200 minutes = 43.2 minutes of full downtime (or 0.1% of requests failing).\n\nBurn rate = observed error rate / allowed error rate. A burn rate of 1 consumes the budget exactly over the window; 14.4 consumes it in 2 days... Common multi-window alerting (from the Google SRE workbook): page when the burn rate is 14.4 over both 1 hour and 5 minutes (2% of a 30-day budget spent in an hour); ticket on 1 over 3 days. Multi-window, multi-burn-rate alerts catch fast burns quickly and slow burns eventually while avoiding noise.\n\nGolden signals: latency (separate successful and failed requests), traffic, errors, saturation. RED for services (rate, errors, duration), USE for resources (utilization, saturation, errors).\n\nPercentiles: use histograms, not averages; p99 shows what unlucky users see. You cannot average percentiles across instances; aggregate histogram buckets instead.\n\nTracing: propagate a trace id (W3C traceparent) through every hop, queue message and async job; sample (head-based random sampling, or tail-based keeping errors and slow traces); spans carry attributes (tenant, model, token counts).\n\nLogging: structured JSON, correlation ids, levels, sampling for noisy paths, no secrets or raw PII.\n\nLLM observability: trace each prompt, retrieval, tool call and model response with latency, token counts and cost; capture user feedback; sample traces into eval datasets; monitor drift in quality scores, refusal rates and cost per task.\n\nIncident response roles: incident commander, communications, operations; mitigate first (rollback, flag off, scale, shed load), then investigate; blameless postmortems with timeline, contributing factors and tracked action items."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Availability targets",
+        "head": ["SLO", "Downtime per year", "Per 30 days", "Typical cost implication"],
+        "rows": [
+          ["99%", "3.65 days", "7.2 hours", "Single instance acceptable"],
+          ["99.9%", "8.8 hours", "43 minutes", "Redundancy across zones"],
+          ["99.99%", "52.6 minutes", "4.3 minutes", "Automated failover, careful deploys"],
+          ["99.999%", "5.3 minutes", "26 seconds", "Multi-region active-active, heavy investment"]
+        ]
+      }
+    ]
+  },
+  "multi-region": {
+    "deep": [
+      {
+        "title": "RPO, RTO and deployment models with numbers",
+        "body": "RPO (recovery point objective): maximum tolerable data loss measured in time. RTO (recovery time objective): maximum tolerable downtime. They drive cost.\n\nBackup and restore: RPO hours (last backup), RTO hours. Pilot light (data replicated, compute off): RPO minutes, RTO tens of minutes. Warm standby (scaled-down stack running): RPO seconds-minutes, RTO minutes. Active-active: RPO near zero (or bounded by async lag), RTO seconds, highest cost and complexity.\n\nReplication latency: cross-region RTT of 60-150 ms makes synchronous commits expensive (every write waits one cross-region RTT), so most systems replicate asynchronously across regions and synchronously across zones within a region (about 1-2 ms RTT). Spanner-style systems pay the latency for global consistency.\n\nFailover mechanics: health checks, an automated or human-approved decision (avoid flapping), DNS or global load balancer cutover (TTL and client caching delay it), promote the replica, fence the old primary, warm caches. Practice with game days and chaos tests; record actual RTO.\n\nBackups: follow 3-2-1 (three copies, two media types, one offsite), make them immutable against ransomware, enable point-in-time recovery (WAL archiving), and test restores regularly: an untested backup is not a backup. Replication copies deletes and corruption, so it is not a substitute.\n\nActive-active data design: partition data by home region with the others as replicas for reads; or use CRDTs/last-write-wins where acceptable; route users to their home region; handle global unique constraints through a single authority or regional id ranges.\n\nResidency and compliance: some data must stay in region (GDPR, local laws), which shapes replication and failover design."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Disaster recovery strategies",
+        "head": ["Strategy", "RPO", "RTO", "Cost", "Complexity"],
+        "rows": [
+          ["Backup and restore", "Hours", "Hours", "Lowest", "Low"],
+          ["Pilot light", "Minutes", "10s of minutes", "Low", "Medium"],
+          ["Warm standby", "Seconds to minutes", "Minutes", "Medium", "Medium"],
+          ["Active-active", "~Zero to seconds", "Seconds", "Highest", "High"]
+        ]
+      }
+    ]
+  },
+  "security-tenancy": {
+    "deep": [
+      {
+        "title": "Multi-tenant isolation models and LLM-specific threats",
+        "body": "Silo (dedicated stack per tenant): strongest isolation, per-tenant customization and noisy-neighbor immunity, highest cost; use for large or regulated customers. Pool (shared everything with tenant_id): lowest cost, relies on correct enforcement; use row-level security policies in the database (Postgres RLS) so a missing WHERE clause cannot leak data. Bridge (schema or database per tenant on shared infrastructure): middle ground, migrations get harder at thousands of tenants.\n\nNoisy neighbors: per-tenant rate limits and quotas, fair queues (weighted round-robin across tenants), resource isolation (connection and thread pools per tenant tier), and the ability to move a hot tenant to its own shard.\n\nAuthN/Z: OIDC for users, short-lived scoped tokens for services, mTLS between services; authorization checked in the service that owns the resource (not only at the gateway); RBAC for coarse roles, ABAC/ReBAC (Zanzibar-style relationship checks) for fine-grained sharing.\n\nData protection: TLS everywhere, encryption at rest with KMS-managed keys and optional per-tenant keys (BYOK), secrets in a vault with rotation, field-level encryption for sensitive columns, audit logs, retention and deletion workflows.\n\nLLM threats: direct and indirect prompt injection (instructions hidden in retrieved documents, emails, web pages); data exfiltration through tool calls or rendered links/images; excessive agency (tools with too much power); cross-tenant leakage in shared vector indexes or caches; sensitive data in prompts and logs; denial of wallet via expensive prompts. Defenses: separate trusted instructions from untrusted data, least-privilege tools and credentials, human approval for sensitive actions, output filtering and link/URL allowlists, tenant filters applied inside retrieval queries, per-tenant cache keys, token and spend limits, red-team test suites, and monitoring. No single prompt-based defense is sufficient."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Tenancy models",
+        "head": ["Model", "Isolation", "Cost per tenant", "Ops complexity", "Best for"],
+        "rows": [
+          ["Pool (shared tables + tenant_id/RLS)", "Logical", "Lowest", "Low", "Many small tenants"],
+          ["Schema per tenant", "Stronger logical", "Low-medium", "Medium (migrations)", "Hundreds to low thousands of tenants"],
+          ["Database per tenant", "Strong", "Medium", "Higher", "Mid-size enterprise tenants"],
+          ["Dedicated stack (silo)", "Strongest", "Highest", "Highest", "Regulated or very large customers"]
+        ]
+      }
+    ]
+  },
+  "vector-search": {
+    "deep": [
+      {
+        "title": "Distance metrics, HNSW and IVF-PQ internals",
+        "body": "Metrics: cosine similarity = (a · b) / (|a| |b|); if vectors are L2-normalized, cosine equals the dot product and ranks the same as Euclidean distance. Euclidean (L2) = sqrt(Σ(ai − bi)²). Use the metric the embedding model was trained for.\n\nExact (flat) search costs O(N × d) per query: 1 billion 768-dimensional float vectors = 3 TB and seconds of compute, so approximate search is required at scale.\n\nHNSW: a multi-layer proximity graph. Upper layers are sparse long-range links; the bottom layer holds all points. Search enters at the top, greedily moves to the closest neighbor, descends, then explores a candidate list of size efSearch at the bottom layer. Parameters: M (links per node, memory and recall), efConstruction (build quality), efSearch (query recall vs latency). Typical recall 95-99% at sub-millisecond latency in memory. Cost: memory roughly N × (d × 4 bytes + M × 2 × 4 bytes of links); inserts are slower; deletes leave holes needing rebuilds.\n\nIVF: k-means partitions vectors into nlist clusters; a query probes the nprobe nearest centroids and scans only those lists, so cost ≈ (nprobe / nlist) × N. Larger nprobe raises recall and latency.\n\nProduct quantization (PQ): split each vector into m sub-vectors and replace each with the index of its nearest centroid in a 256-entry codebook, storing m bytes per vector instead of 4d bytes (768 dims: 3,072 bytes to 96 bytes, 32x smaller). Distances use lookup tables. Some accuracy is lost, often recovered by reranking the shortlist with full vectors. IVF-PQ and DiskANN make billion-scale search affordable.\n\nFiltering: post-filtering (search, then filter) can return too few results when the filter is selective; pre-filtering (restrict candidates first) can hurt graph traversal; modern engines integrate filters in the traversal or switch to brute force when the filtered set is small.\n\nEvaluation: recall@k = |approximate top-k ∩ exact top-k| / k on a sample of real queries; plot recall vs latency while sweeping efSearch or nprobe and pick the knee."
+      }
+    ],
+    "compare": [
+      {
+        "title": "ANN index families",
+        "head": ["Index", "Memory", "Recall / speed", "Updates", "Best for"],
+        "rows": [
+          ["Flat (exact)", "Full vectors", "100% recall, O(N)", "Trivial", "Under ~1M vectors or ground truth"],
+          ["HNSW", "High (vectors + graph)", "Excellent recall, very fast", "Inserts OK, deletes awkward", "Latency-critical, fits in RAM"],
+          ["IVF-Flat", "Full vectors", "Good, tunable via nprobe", "Cheap inserts, drift over time", "Medium scale"],
+          ["IVF-PQ", "Compressed (8-64x smaller)", "Good with rerank", "Retrain periodically", "Large scale on a budget"],
+          ["DiskANN / SSD graph", "Small RAM, vectors on SSD", "High recall, ms latency", "Batched merges", "Billion-scale"]
+        ]
+      }
+    ]
+  }
+}

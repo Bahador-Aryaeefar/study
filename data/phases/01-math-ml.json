@@ -1,0 +1,95 @@
+{
+  "id": "math-ml",
+  "title": "Math and Classical ML",
+  "tagline": "Enough theory to reason about models, losses, data and failure modes without hand-waving.",
+  "level": "foundation",
+  "color": "#818cf8",
+  "topics": [
+    {
+      "id": "linear-algebra",
+      "title": "Linear algebra",
+      "summary": "The language of embeddings, attention and every tensor op.",
+      "items": [
+        "Vectors, norms, dot product, cosine similarity",
+        "Matrices as linear maps, matmul, transpose, inverse",
+        "Eigenvalues, eigenvectors, SVD, low-rank approximation (why LoRA works)",
+        "PCA and its relation to SVD",
+        "Orthogonality, projections, basis, rank",
+        "Tensor shapes and broadcasting (NumPy/PyTorch)"
+      ],
+      "questions": ["Why does cosine similarity work for embeddings and when does it not?", "Explain LoRA in terms of low-rank matrices."],
+      "resources": ["3Blue1Brown Essence of Linear Algebra", "Gilbert Strang MIT 18.06", "Mathematics for Machine Learning"]
+    },
+    {
+      "id": "calculus-optim",
+      "title": "Calculus and optimization",
+      "summary": "How models learn.",
+      "items": [
+        "Partial derivatives, gradient, Jacobian, Hessian",
+        "Chain rule and backpropagation by hand",
+        "Gradient descent, SGD, momentum, RMSProp, Adam, AdamW",
+        "Learning rate schedules: warmup, cosine decay",
+        "Convexity, saddle points, local minima in high dimensions",
+        "Regularization: L1, L2, weight decay, dropout",
+        "Vanishing and exploding gradients, gradient clipping"
+      ],
+      "questions": ["Derive backprop for a two-layer MLP.", "Why AdamW over Adam with L2?", "Why do transformers need LR warmup?"],
+      "resources": ["Deep Learning book ch. 4 and 8", "Karpathy: micrograd", "Distill: Why Momentum Really Works"]
+    },
+    {
+      "id": "probability-stats",
+      "title": "Probability and statistics",
+      "summary": "Needed for sampling, evals, A/B tests and uncertainty.",
+      "items": [
+        "Random variables, expectation, variance, covariance",
+        "Common distributions: Bernoulli, Gaussian, categorical, Poisson",
+        "Bayes rule, MLE vs MAP",
+        "Entropy, cross-entropy, KL divergence, perplexity",
+        "Law of large numbers, CLT, confidence intervals, bootstrap",
+        "Hypothesis testing, p-values, power, multiple comparisons",
+        "A/B testing design, sample size, sequential testing pitfalls",
+        "Sampling: temperature, top-k, top-p, min-p, beam search",
+        "Calibration and uncertainty estimation"
+      ],
+      "questions": ["Why is cross-entropy the right loss for classification?", "How many samples do you need to detect a 2% improvement in an eval?", "What does temperature do mathematically?"],
+      "resources": ["Think Stats / Think Bayes", "StatQuest videos", "Pattern Recognition and ML (Bishop)"]
+    },
+    {
+      "id": "classical-ml",
+      "title": "Classical machine learning",
+      "summary": "Often the right answer in production. Always the right baseline.",
+      "items": [
+        "Supervised vs unsupervised vs self-supervised vs RL",
+        "Linear and logistic regression",
+        "Trees, random forests, gradient boosting (XGBoost, LightGBM)",
+        "SVM and kernel idea",
+        "k-means, GMM, hierarchical clustering, DBSCAN",
+        "Bias-variance trade-off, overfitting, cross-validation",
+        "Metrics: accuracy, precision, recall, F1, ROC-AUC, PR-AUC, log loss",
+        "Imbalanced data: resampling, class weights, threshold tuning",
+        "Feature engineering, leakage, train/serve skew",
+        "Recommender basics: collaborative filtering, matrix factorization, two-tower",
+        "Time series basics and forecasting baselines",
+        "scikit-learn pipelines"
+      ],
+      "questions": ["When would you pick gradient boosting over a neural network?", "Explain data leakage with an example.", "Precision vs recall: how do you choose a threshold?"],
+      "resources": ["Hands-On ML (Géron)", "Andrew Ng ML Specialization", "Kaggle Learn"]
+    },
+    {
+      "id": "data-skills",
+      "title": "Data wrangling and analysis",
+      "summary": "Most real work is data work.",
+      "items": [
+        "NumPy, pandas, Polars",
+        "SQL: joins, window functions, CTEs, query plans, indexing",
+        "EDA and visualization (matplotlib, seaborn, plotly)",
+        "Data quality checks, schema validation, drift detection",
+        "Labeling workflows, inter-annotator agreement, guidelines",
+        "Synthetic data generation and its failure modes",
+        "Dataset versioning and lineage"
+      ],
+      "questions": ["Write a SQL query for the 7-day rolling average per user.", "How do you detect that production data drifted from training data?"],
+      "resources": ["Mode SQL tutorial", "Polars user guide", "Great Expectations docs"]
+    }
+  ]
+}

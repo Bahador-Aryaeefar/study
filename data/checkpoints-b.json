@@ -1,0 +1,275 @@
+{
+  "safety-security": {
+    "mustKnow": [
+      "Direct vs indirect prompt injection and why the system prompt is not a security boundary",
+      "The lethal trifecta (private data + untrusted content + external comms) and how to break it",
+      "Confused deputy in agents; least-privilege and per-user delegated credentials",
+      "Exfiltration channels: markdown images, links, tool arguments, DNS",
+      "Sandboxing untrusted code: microVM/gVisor vs containers, egress control",
+      "Design patterns: plan-then-execute, dual LLM, action allow-lists, human approval",
+      "OWASP LLM Top 10 categories",
+      "GDPR deletion across logs, embeddings and traces"
+    ],
+    "mustDo": [
+      "Threat-model one of your agents on paper (assets, trust boundaries, abuse cases)",
+      "Build an injection test suite (20+ payloads in documents/tool results) and run it in CI",
+      "Run agent-generated code in a locked-down sandbox with no network by default",
+      "Add an output filter that strips exfiltration vectors and a tool-call policy layer",
+      "Add per-tenant budgets and abuse alarms to stop denial-of-wallet"
+    ],
+    "configs": [
+      {
+        "title": "Locked-down sandbox for untrusted code",
+        "lang": "bash",
+        "note": "Container baseline. For hostile multi-tenant code prefer gVisor or Firecracker.",
+        "code": "docker run --rm \\\n  --network none \\\n  --read-only --tmpfs /tmp:rw,size=64m \\\n  --cap-drop ALL --security-opt no-new-privileges \\\n  --pids-limit 128 --memory 512m --cpus 1 \\\n  --user 65534:65534 \\\n  -v \"$PWD/work:/work:rw\" -w /work \\\n  python:3.12-slim timeout 30 python main.py"
+      },
+      {
+        "title": "Tool-call policy (deny by default)",
+        "lang": "yaml",
+        "note": "Enforce outside the model, in deterministic code.",
+        "code": "default: deny\ntools:\n  search_docs:   { allow: true }\n  read_file:     { allow: true, paths: [\"/workspace/**\"], deny_paths: [\"**/.env\", \"**/*.pem\"] }\n  send_email:    { allow: true, require_approval: true, recipients_allowlist: [\"@mycompany.com\"] }\n  run_shell:     { allow: false }\n  http_fetch:    { allow: true, domains: [\"docs.mycompany.com\"], max_bytes: 200000 }\nlimits:\n  max_tool_calls_per_run: 40\n  max_cost_usd_per_run: 2.00"
+      },
+      {
+        "title": "Strip exfiltration vectors from model output",
+        "lang": "python",
+        "note": "Markdown images auto-load and can leak data in the URL.",
+        "code": "import re\nIMG = re.compile(r\"!\\[[^\\]]*\\]\\((?!https://cdn\\.mycompany\\.com/)[^)]*\\)\")\ndef sanitize(md: str) -> str:\n    md = IMG.sub(\"[image removed]\", md)\n    return md"
+      }
+    ]
+  },
+  "backend-data": {
+    "mustKnow": [
+      "SSE streaming mechanics and proxy buffering gotchas",
+      "Postgres isolation levels, MVCC, and what each level still allows",
+      "Connection pooling and why serverless needs PgBouncer",
+      "Queue vs log, delivery semantics, and how to get effectively-once",
+      "Outbox pattern and change data capture",
+      "Token bucket and sliding window rate limiting implementations",
+      "Cursor vs offset pagination",
+      "Train/serve skew in features and how a feature store addresses it"
+    ],
+    "mustDo": [
+      "Build a FastAPI service that streams tokens over SSE and survives client disconnects",
+      "Implement a Redis token-bucket limiter with a Lua script and load test it",
+      "Design and migrate a Postgres schema (including an online column backfill)",
+      "Build a worker pipeline with retries, DLQ and idempotent handlers",
+      "Write a pipeline that turns raw conversations into a deduplicated, PII-scrubbed dataset"
+    ],
+    "configs": [
+      {
+        "title": "FastAPI SSE streaming endpoint",
+        "lang": "python",
+        "note": "Disable proxy buffering and detect disconnects to stop paying for tokens nobody reads.",
+        "code": "from fastapi import FastAPI, Request\nfrom fastapi.responses import StreamingResponse\n\napp = FastAPI()\n\n@app.post(\"/chat\")\nasync def chat(req: Request, body: ChatIn):\n    async def gen():\n        async for chunk in llm_stream(body.messages):\n            if await req.is_disconnected():\n                break\n            yield f\"data: {chunk.json()}\\n\\n\"\n        yield \"data: [DONE]\\n\\n\"\n    return StreamingResponse(gen(), media_type=\"text/event-stream\",\n                             headers={\"Cache-Control\": \"no-cache\", \"X-Accel-Buffering\": \"no\"})"
+      },
+      {
+        "title": "Redis token bucket (atomic Lua)",
+        "lang": "lua",
+        "note": "KEYS[1]=bucket key; ARGV = capacity, refill_per_sec, now_ms, cost.",
+        "code": "local cap, rate, now, cost = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3]), tonumber(ARGV[4])\nlocal d = redis.call('HMGET', KEYS[1], 't', 'ts')\nlocal tokens = tonumber(d[1]) or cap\nlocal ts = tonumber(d[2]) or now\ntokens = math.min(cap, tokens + (now - ts) / 1000 * rate)\nlocal ok = tokens >= cost\nif ok then tokens = tokens - cost end\nredis.call('HSET', KEYS[1], 't', tokens, 'ts', now)\nredis.call('PEXPIRE', KEYS[1], math.ceil(cap / rate * 1000) * 2)\nreturn ok and 1 or 0"
+      },
+      {
+        "title": "Postgres settings worth reviewing",
+        "lang": "ini",
+        "note": "Starting values for a 16 GB / 4 vCPU box; always measure.",
+        "code": "shared_buffers = 4GB\neffective_cache_size = 12GB\nwork_mem = 32MB\nmaintenance_work_mem = 1GB\nmax_connections = 100          # pool with PgBouncer instead of raising this\nrandom_page_cost = 1.1         # SSD\nwal_compression = on\nautovacuum_vacuum_scale_factor = 0.05\nlog_min_duration_statement = 250\nshared_preload_libraries = 'pg_stat_statements'"
+      }
+    ]
+  },
+  "devops-cloud": {
+    "mustKnow": [
+      "How a container works and how image layers and build cache behave",
+      "Kubernetes control plane flow: from kubectl apply to a running pod",
+      "Requests vs limits, QoS classes, and why CPU limits cause throttling",
+      "GPU scheduling on Kubernetes (device plugin, taints, MIG, time-slicing)",
+      "Rolling vs blue-green vs canary, and GitOps pull-based deploys",
+      "Terraform state, drift and safe change workflows",
+      "SLIs, SLOs, error budgets, and symptom-based alerting",
+      "Retry storms, circuit breakers, load shedding, timeouts"
+    ],
+    "mustDo": [
+      "Containerize a service with a multi-stage non-root image and scan it",
+      "Deploy it to a local cluster (kind/k3d) with probes, HPA and a Helm chart",
+      "Provision a VPC + cluster + registry with Terraform and destroy it cleanly",
+      "Build CI that tests, builds, scans and deploys via ArgoCD",
+      "Run a load test, find the bottleneck, and write a short postmortem-style report",
+      "Write SLOs and alerts for a service and trigger one on purpose"
+    ],
+    "configs": [
+      {
+        "title": "Multi-stage, non-root Python Dockerfile",
+        "lang": "dockerfile",
+        "note": "Small image, cached dependency layer, no root.",
+        "code": "FROM python:3.12-slim AS build\nCOPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv\nWORKDIR /app\nCOPY pyproject.toml uv.lock ./\nRUN uv sync --frozen --no-dev --no-install-project\nCOPY src ./src\nRUN uv sync --frozen --no-dev\n\nFROM python:3.12-slim\nRUN useradd -r -u 10001 app\nWORKDIR /app\nCOPY --from=build /app /app\nENV PATH=\"/app/.venv/bin:$PATH\" PYTHONUNBUFFERED=1\nUSER 10001\nEXPOSE 8000\nHEALTHCHECK CMD python -c \"import urllib.request as u;u.urlopen('http://localhost:8000/healthz')\"\nCMD [\"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
+      },
+      {
+        "title": "Kubernetes Deployment for a GPU inference server",
+        "lang": "yaml",
+        "note": "Long startup probe because model loading is slow; shared memory for the engine.",
+        "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata: { name: vllm }\nspec:\n  replicas: 2\n  selector: { matchLabels: { app: vllm } }\n  template:\n    metadata: { labels: { app: vllm } }\n    spec:\n      tolerations: [{ key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }]\n      containers:\n        - name: vllm\n          image: vllm/vllm-openai:latest\n          args: [\"--model\", \"meta-llama/Llama-3.1-8B-Instruct\", \"--enable-prefix-caching\"]\n          ports: [{ containerPort: 8000 }]\n          resources:\n            limits: { nvidia.com/gpu: 1, memory: 48Gi }\n            requests: { cpu: \"6\", memory: 32Gi }\n          startupProbe:\n            httpGet: { path: /health, port: 8000 }\n            failureThreshold: 60\n            periodSeconds: 10\n          readinessProbe:\n            httpGet: { path: /health, port: 8000 }\n          volumeMounts: [{ name: shm, mountPath: /dev/shm }]\n      volumes:\n        - name: shm\n          emptyDir: { medium: Memory, sizeLimit: 8Gi }"
+      },
+      {
+        "title": "KEDA: autoscale on queue depth",
+        "lang": "yaml",
+        "note": "Scale workers by backlog, not CPU. Works for agent workers and batch inference.",
+        "code": "apiVersion: keda.sh/v1alpha1\nkind: ScaledObject\nmetadata: { name: agent-workers }\nspec:\n  scaleTargetRef: { name: agent-workers }\n  minReplicaCount: 1\n  maxReplicaCount: 40\n  cooldownPeriod: 300\n  triggers:\n    - type: redis\n      metadata:\n        address: redis:6379\n        listName: agent_jobs\n        listLength: \"5\""
+      },
+      {
+        "title": "GitHub Actions CI with OIDC (no long-lived keys)",
+        "lang": "yaml",
+        "note": "Tests, then eval gate, then image build.",
+        "code": "name: ci\non: { pull_request: {}, push: { branches: [main] } }\npermissions: { id-token: write, contents: read }\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: astral-sh/setup-uv@v5\n      - run: uv sync --frozen\n      - run: uv run ruff check . && uv run mypy src && uv run pytest\n      - run: uv run pytest evals/ --maxfail=1   # LLM eval gate\n  build:\n    needs: test\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: aws-actions/configure-aws-credentials@v4\n        with: { role-to-assume: arn:aws:iam::123456789012:role/ci, aws-region: us-east-1 }\n      - run: docker build -t $REGISTRY/app:${{ github.sha }} . && docker push $REGISTRY/app:${{ github.sha }}"
+      },
+      {
+        "title": "Terraform remote state",
+        "lang": "hcl",
+        "note": "Never keep state local on a team.",
+        "code": "terraform {\n  required_version = \">= 1.7\"\n  backend \"s3\" {\n    bucket         = \"my-tf-state\"\n    key            = \"platform/prod.tfstate\"\n    region         = \"us-east-1\"\n    dynamodb_table = \"tf-locks\"\n    encrypt        = true\n  }\n  required_providers {\n    aws = { source = \"hashicorp/aws\", version = \"~> 5.0\" }\n  }\n}"
+      }
+    ]
+  },
+  "mlops": {
+    "mustKnow": [
+      "What makes a model run reproducible (code, data, config, environment, seed)",
+      "Drift types and how to detect them with and without labels",
+      "Online vs batch vs streaming inference and when each fits",
+      "Shadow, canary and A/B for models; rollback criteria",
+      "LLMOps differences: prompt/config registries, eval gates, provider migrations",
+      "MFU, goodput and why GPU utilization lies",
+      "Blue/green index swaps for re-embedding",
+      "Cost attribution per tenant and per feature"
+    ],
+    "mustDo": [
+      "Track experiments with MLflow or W&B and register a model with lineage",
+      "Version a dataset with DVC and reproduce a run from a clean machine",
+      "Deploy a model behind a gateway with canary and automated rollback",
+      "Build a drift dashboard and an alert that fires on a synthetic shift",
+      "Write and execute a model migration plan (A to B) with eval evidence",
+      "Profile a multi-GPU run and compute MFU"
+    ],
+    "configs": [
+      {
+        "title": "MLflow tracking in a training script",
+        "lang": "python",
+        "note": "Log params, metrics and the model with its signature.",
+        "code": "import mlflow\nmlflow.set_tracking_uri(\"http://mlflow:5000\")\nmlflow.set_experiment(\"intent-classifier\")\nwith mlflow.start_run(run_name=\"lora-r16\"):\n    mlflow.log_params({\"lr\": 2e-4, \"rank\": 16, \"data_version\": data_sha})\n    for epoch in range(epochs):\n        mlflow.log_metric(\"val_f1\", f1, step=epoch)\n    mlflow.pyfunc.log_model(\"model\", python_model=wrapper, registered_model_name=\"intent-classifier\")"
+      },
+      {
+        "title": "DVC pipeline basics",
+        "lang": "bash",
+        "note": "Data and model artifacts versioned alongside git.",
+        "code": "dvc init\ndvc remote add -d store s3://my-bucket/dvc\ndvc add data/train.parquet\ngit add data/train.parquet.dvc .gitignore && git commit -m 'track data'\ndvc push\n# reproduce anywhere\ngit checkout <commit> && dvc pull"
+      },
+      {
+        "title": "Prometheus alerts for an LLM service",
+        "lang": "yaml",
+        "note": "Alert on symptoms users feel, plus cost.",
+        "code": "groups:\n- name: llm\n  rules:\n  - alert: HighTTFTp95\n    expr: histogram_quantile(0.95, sum(rate(llm_ttft_seconds_bucket[5m])) by (le)) > 2\n    for: 10m\n    labels: { severity: page }\n  - alert: ErrorBudgetBurn\n    expr: sum(rate(llm_requests_total{status=~\"5..\"}[1h])) / sum(rate(llm_requests_total[1h])) > 0.02\n    for: 5m\n    labels: { severity: page }\n  - alert: TokenSpendSpike\n    expr: sum(rate(llm_tokens_total[15m])) > 3 * sum(rate(llm_tokens_total[15m] offset 1d))\n    for: 15m\n    labels: { severity: ticket }"
+      }
+    ]
+  },
+  "system-design": {
+    "mustKnow": [
+      "The latency and throughput numbers you need for estimation",
+      "CAP/PACELC stated correctly; linearizable vs eventual and the models in between",
+      "Quorums (R+W>N), leader-follower vs leaderless, and conflict resolution",
+      "Consistent hashing with virtual nodes; sharding and resharding strategies",
+      "Cache strategies and stampede protection; hot-key handling",
+      "Idempotency, sagas and the outbox pattern; why exactly-once is really effectively-once",
+      "Rate limiter design, retry amplification and load shedding",
+      "Fan-out on write vs read, and the celebrity problem",
+      "Inference platform design: batching, KV-cache affinity, autoscaling, admission control",
+      "Agent platform design: durable execution, sandboxing, credential delegation, budgets",
+      "How to structure a 45-minute interview and where to spend the deep-dive time",
+      "B-tree vs LSM-tree trade-offs and which workloads suit each",
+      "How ID generators (Snowflake, ULID) stay unique and roughly sorted",
+      "Expand-and-contract migrations and how to reshard online"
+    ],
+    "mustDo": [
+      "Complete 6 classic designs out loud with a timer and numbers",
+      "Complete 6 AI designs out loud: ChatGPT, LLM gateway, enterprise RAG, agent runtime, sandbox platform, voice agent",
+      "Write a 2-page design doc with alternatives considered for one of them",
+      "Build a working rate limiter and a minimal LLM gateway to ground the theory",
+      "Do 3 peer mock interviews and write down the feedback",
+      "Read 3 real postmortems and map each to a design principle it violated",
+      "Implement a Snowflake-style ID generator and a consistent hash ring with virtual nodes",
+      "Write an ADR for one real decision with two alternatives and a revisit trigger"
+    ],
+    "configs": [
+      {
+        "title": "Design doc template",
+        "lang": "markdown",
+        "note": "Use this for interviews and for real work.",
+        "code": "# <System> design\n\n## 1. Context and goals\nWho uses it, why now, what success looks like. Non-goals.\n\n## 2. Requirements\nFunctional / non-functional (latency p95, availability, durability, cost ceiling).\n\n## 3. Scale and estimates\nDAU, QPS (avg/peak), storage/year, bandwidth, tokens/day, GPUs.\n\n## 4. API and data model\nEndpoints, request/response, schemas, keys, indexes.\n\n## 5. High-level architecture\nDiagram + the read path and the write path.\n\n## 6. Deep dives\nBottleneck 1, bottleneck 2, with alternatives and trade-offs.\n\n## 7. Failure modes\nWhat breaks, blast radius, detection, mitigation, degradation plan.\n\n## 8. Security, privacy, cost\n\n## 9. Rollout and observability\nSLOs, dashboards, canary plan.\n\n## 10. Alternatives considered and open questions"
+      },
+      {
+        "title": "Estimation worksheet",
+        "lang": "text",
+        "note": "Fill these in at the start of every design.",
+        "code": "Users:           DAU = __   peak concurrency = __\nRequests:        avg QPS = DAU * req/user / 86400 = __   peak = avg * 3 = __\nStorage:         bytes/record * records/day * 365 * replicas = __\nBandwidth:       QPS * payload = __ MB/s\nLLM tokens:      reqs/day * (in + out tokens) = __ tokens/day -> $ = __\nGPU sizing:      peak tok/s needed / tok/s per GPU = __ GPUs (+30% headroom)\nCache:           working set * hit target -> memory = __ GB"
+      },
+      {
+        "title": "Idempotent write with outbox (SQL)",
+        "lang": "sql",
+        "note": "The state change and the event commit atomically; a relay publishes the event.",
+        "code": "BEGIN;\nINSERT INTO payments (id, idempotency_key, amount, status)\nVALUES (gen_random_uuid(), $1, $2, 'created')\nON CONFLICT (idempotency_key) DO NOTHING;\n\nINSERT INTO outbox (aggregate_id, type, payload)\nSELECT id, 'payment.created', to_jsonb(p) FROM payments p WHERE idempotency_key = $1;\nCOMMIT;\n-- a relay process polls/streams the outbox table and publishes to Kafka, then marks rows sent"
+      },
+      {
+        "title": "Snowflake-style ID generator",
+        "lang": "typescript",
+        "note": "64-bit IDs: 41 bits time, 10 bits worker, 12 bits sequence. Sortable and no coordination at write time.",
+        "code": "const EPOCH = 1700000000000n;\nexport class Snowflake {\n  private last = -1n; private seq = 0n;\n  constructor(private worker: bigint) { if (worker < 0n || worker > 1023n) throw new Error(\"worker 0..1023\"); }\n  next(): bigint {\n    let now = BigInt(Date.now()) - EPOCH;\n    if (now < this.last) now = this.last; // clock went backwards: never go back\n    if (now === this.last) {\n      this.seq = (this.seq + 1n) & 4095n;\n      if (this.seq === 0n) { while (now <= this.last) now = BigInt(Date.now()) - EPOCH; }\n    } else this.seq = 0n;\n    this.last = now;\n    return (now << 22n) | (this.worker << 12n) | this.seq;\n  }\n}"
+      },
+      {
+        "title": "Consistent hash ring with virtual nodes",
+        "lang": "typescript",
+        "note": "Adding or removing a node moves about 1/N of the keys instead of nearly all of them.",
+        "code": "import { createHash } from \"crypto\";\nconst h = (s: string) => createHash(\"md5\").update(s).digest().readUInt32BE(0);\nexport class Ring {\n  private points: { p: number; node: string }[] = [];\n  constructor(nodes: string[], private vnodes = 100) { nodes.forEach((n) => this.add(n)); }\n  add(node: string) {\n    for (let i = 0; i < this.vnodes; i++) this.points.push({ p: h(node + \"#\" + i), node });\n    this.points.sort((a, b) => a.p - b.p);\n  }\n  remove(node: string) { this.points = this.points.filter((x) => x.node !== node); }\n  get(key: string): string {\n    const k = h(key); let lo = 0, hi = this.points.length - 1;\n    if (k > this.points[hi].p) return this.points[0].node;\n    while (lo < hi) { const m = (lo + hi) >> 1; if (this.points[m].p >= k) hi = m; else lo = m + 1; }\n    return this.points[lo].node;\n  }\n}"
+      },
+      {
+        "title": "Circuit breaker",
+        "lang": "typescript",
+        "note": "Fail fast while a dependency is down, then probe carefully before closing again.",
+        "code": "type State = \"closed\" | \"open\" | \"half\";\nexport class Breaker {\n  private state: State = \"closed\"; private fails = 0; private openedAt = 0;\n  constructor(private threshold = 5, private cooldownMs = 10000) {}\n  async call<T>(fn: () => Promise<T>): Promise<T> {\n    if (this.state === \"open\") {\n      if (Date.now() - this.openedAt < this.cooldownMs) throw new Error(\"circuit open\");\n      this.state = \"half\";\n    }\n    try {\n      const r = await fn();\n      this.state = \"closed\"; this.fails = 0; return r;\n    } catch (e) {\n      this.fails++;\n      if (this.state === \"half\" || this.fails >= this.threshold) { this.state = \"open\"; this.openedAt = Date.now(); }\n      throw e;\n    }\n  }\n}"
+      },
+      {
+        "title": "URL shortener schema",
+        "lang": "sql",
+        "note": "Read-heavy and key-value shaped. Base62 of a unique ID avoids collisions without a lookup.",
+        "code": "CREATE TABLE links (\n  id          BIGINT PRIMARY KEY,          -- from the ID generator\n  code        VARCHAR(10) NOT NULL UNIQUE, -- base62(id)\n  long_url    TEXT NOT NULL,\n  owner_id    BIGINT,\n  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),\n  expires_at  TIMESTAMPTZ\n);\nCREATE INDEX links_owner_idx ON links (owner_id, created_at DESC);\n-- Clicks go to a stream, then an analytics store; never write them on the redirect path."
+      }
+    ]
+  },
+  "interview-career": {
+    "mustKnow": [
+      "Your top 3 projects: architecture, decisions, failures, numbers",
+      "Your 6 STAR stories mapped to common senior questions",
+      "A crisp 2-minute explanation of transformers, RAG and agents at three depths",
+      "How to scope and structure an eval design answer",
+      "How to critique a paper: claim, evidence, limits, how you'd test it",
+      "Your weakest area and your concrete plan to close it"
+    ],
+    "mustDo": [
+      "Publish 1 flagship project with README, architecture diagram, evals and results",
+      "Do 5 full mock loops (coding, ML, system design, behavioral, project deep-dive)",
+      "Write and rehearse STAR stories out loud and time them to 2 minutes",
+      "Apply to 3 low-stakes companies first to practice before the target ones",
+      "Prepare questions that show seniority: eval culture, on-call, ownership, roadmap"
+    ],
+    "configs": [
+      {
+        "title": "STAR story template",
+        "lang": "markdown",
+        "note": "Seniors stress the Result and the Learning with numbers.",
+        "code": "**Situation** (1-2 sentences): context, stakes, constraints.\n**Task**: what I specifically owned.\n**Action**: 3-4 concrete decisions I made and why (alternatives rejected).\n**Result**: measurable outcome (latency -40%, cost -$30k/mo, +12 pts task success).\n**Learning**: what I'd do differently / what I changed afterwards."
+      },
+      {
+        "title": "12-week study cadence",
+        "lang": "text",
+        "note": "Adapt to your timeline; keep weekly mock practice from week 4.",
+        "code": "Wk 1-2   Foundations gaps + DSA warmup (daily 2 problems)\nWk 3-4   Transformers from scratch; LLM engineering; start flagship project\nWk 5-6   RAG + evals + observability on the project\nWk 7-8   Agents deep dive + safety; add tracing, budgets, red-team tests\nWk 9-10  DevOps/MLOps hands-on; deploy to k8s; write the runbook\nWk 11    System design marathon (2 mocks/day)\nWk 12    Full mock loops, behavioral polish, apply"
+      }
+    ]
+  }
+}

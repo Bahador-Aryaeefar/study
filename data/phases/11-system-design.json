@@ -1,0 +1,506 @@
+{
+  "id": "system-design",
+  "title": "System Design",
+  "tagline": "The deepest section. Classic distributed systems plus AI-specific architectures, with worked case studies.",
+  "level": "advanced",
+  "color": "#e879f9",
+  "topics": [
+    {
+      "id": "sd-framework",
+      "title": "Interview framework and estimation",
+      "summary": "A repeatable structure so you never freeze, and numbers so you never hand-wave.",
+      "items": [
+        "Clarify requirements: functional, non-functional, scale, constraints, out of scope",
+        "Define APIs and data model early",
+        "Back-of-envelope: QPS, storage, bandwidth, memory, GPU count, token cost",
+        "High-level diagram first, then deep dive on 1–2 bottlenecks",
+        "Identify bottlenecks and single points of failure proactively",
+        "State trade-offs explicitly; justify every choice with a requirement",
+        "Evolve the design: MVP → scale 10x → scale 100x",
+        "Time management in a 45-minute round",
+        "Communicating with the interviewer: checkpoints, assumptions, whiteboard hygiene"
+      ],
+      "questions": [
+        "Estimate storage for 1B messages per day with 1 KB each for 5 years.",
+        "How do you decide what to deep-dive on?"
+      ],
+      "resources": [
+        "System Design Interview vol. 1 and 2 (Alex Xu)",
+        "Hello Interview delivery framework",
+        "Latency numbers every programmer should know"
+      ],
+      "concepts": [
+        {
+          "title": "Numbers worth memorizing",
+          "body": "1 day = ~86,400 s (round to 100k). 1M req/day ~ 12 QPS; 100M/day ~ 1.2k QPS. Peak is typically 2–5x average. Memory read ~100 ns, SSD random read ~100 µs, same-datacenter round trip ~0.5 ms, cross-region ~50–150 ms. A single modern Postgres node handles roughly 5–20k simple QPS; Redis ~100k ops/s; Kafka partitions ~10–50 MB/s each. 1 KB x 1B = 1 TB. Powers: 2^10 ~ 1e3, 2^20 ~ 1e6, 2^30 ~ 1e9."
+        },
+        {
+          "title": "The 45-minute shape",
+          "body": "0–5 min: requirements and scale. 5–10: API and data model. 10–20: high-level design with the core read and write paths. 20–38: deep dives (data layer, scaling hot spots, failure handling, the AI-specific parts). 38–45: bottlenecks, monitoring, trade-offs recap, what you would build next. Say 'I'm going to assume X, tell me if wrong' rather than asking open-ended questions every time."
+        }
+      ]
+    },
+    {
+      "id": "sd-building-blocks",
+      "title": "Core building blocks",
+      "summary": "The vocabulary of every design. Know what each is, how it fails and what it costs.",
+      "items": [
+        "Load balancing: L4 vs L7, algorithms (round robin, least conn, consistent hashing), health checks",
+        "Reverse proxies, API gateways, service discovery",
+        "Caching layers: client, CDN, edge, application, database; cache-aside, read-through, write-through, write-back",
+        "Cache invalidation, TTLs, stampede/thundering herd, hot keys, negative caching",
+        "CDN: push vs pull, cache keys, invalidation, edge compute",
+        "Database scaling: read replicas, vertical scaling, partitioning, sharding",
+        "Sharding strategies: range, hash, directory, consistent hashing, virtual nodes; resharding",
+        "Indexing and secondary indexes in distributed stores",
+        "SQL vs NoSQL: access patterns drive the choice",
+        "Blob/object storage and metadata separation",
+        "Queues and streams as buffers; async processing",
+        "Unique ID generation: UUID, Snowflake, ULID, DB sequences",
+        "Search: inverted indexes, relevance, typeahead",
+        "Geospatial indexing: geohash, quadtree, S2/H3"
+      ],
+      "questions": [
+        "Explain consistent hashing and why virtual nodes help.",
+        "How do you prevent a cache stampede on a hot key expiring?",
+        "How would you reshard a 20 TB database online?"
+      ],
+      "resources": [
+        "Designing Data-Intensive Applications ch. 5–6",
+        "Dynamo paper",
+        "ByteByteGo"
+      ],
+      "concepts": [
+        {
+          "title": "Cache strategies and their failure modes",
+          "body": "Cache-aside: app reads cache, on miss reads DB and fills cache. Simple, but stale reads and stampedes. Write-through: write cache and DB together; consistent but slower writes. Write-back: write cache, flush async; fast but risks data loss. Stampede fixes: request coalescing (single-flight), probabilistic early refresh, jittered TTLs, serve-stale-while-revalidate. Hot keys: replicate key across shards, local in-process cache with tiny TTL. Always say what happens when the cache is cold or down: the DB must survive it, or you need load shedding."
+        },
+        {
+          "title": "Consistent hashing",
+          "body": "Map nodes and keys onto a ring; a key belongs to the next node clockwise. Adding or removing a node moves only ~1/N of keys instead of nearly all with modulo hashing. Virtual nodes (each physical node owns many ring positions) smooth load and let heterogeneous machines take proportional shares. Used in Dynamo, Cassandra, memcached clients, CDNs, and sticky routing of LLM requests to GPU pods that hold a warm prefix cache."
+        }
+      ]
+    },
+    {
+      "id": "sd-distributed",
+      "title": "Distributed systems theory",
+      "summary": "The part senior interviews probe hardest. Understand it, don't recite it.",
+      "items": [
+        "Fallacies of distributed computing; partial failure",
+        "CAP theorem done correctly, and PACELC",
+        "Consistency models: linearizable, sequential, causal, read-your-writes, monotonic reads, eventual",
+        "Replication: single-leader, multi-leader, leaderless; sync vs async; quorum (R + W > N)",
+        "Conflict resolution: last-write-wins, vector clocks, CRDTs, operational transform",
+        "Consensus: Paxos intuition, Raft in detail (leader election, log replication, safety)",
+        "Distributed transactions: 2PC, 3PC, Sagas, TCC",
+        "Time: clock skew, NTP, logical clocks (Lamport), vector clocks, hybrid logical clocks, TrueTime",
+        "Distributed locks and leases; fencing tokens; why Redlock is debated",
+        "Leader election and coordination: ZooKeeper, etcd, Consul",
+        "Failure detection: heartbeats, phi accrual, gossip protocols",
+        "Idempotency, deduplication and exactly-once effects",
+        "Partition tolerance in practice: split brain and how to avoid it",
+        "Gossip, anti-entropy, Merkle trees",
+        "NewSQL / globally distributed DBs: Spanner, CockroachDB, TiDB, Aurora DSQL"
+      ],
+      "questions": [
+        "Explain CAP without saying 'pick two'.",
+        "How does Raft elect a leader and what ensures a committed entry is never lost?",
+        "Why can't you build a correct distributed lock on timeouts alone?",
+        "With N=5, W=3, R=3, what can go wrong and what happens during a partition?"
+      ],
+      "resources": [
+        "Designing Data-Intensive Applications ch. 5, 7, 8, 9",
+        "MIT 6.824 / 6.5840 Distributed Systems",
+        "Raft paper and visualization",
+        "Jepsen analyses",
+        "Martin Kleppmann: How to do distributed locking"
+      ],
+      "concepts": [
+        {
+          "title": "CAP, stated correctly",
+          "body": "When a network partition happens, a system must choose between consistency (linearizability: refuse some requests) and availability (every non-failed node answers, possibly stale). Without a partition you can have both; PACELC adds that even then you trade latency against consistency. CAP is about behavior during partitions, not a permanent label on a database, and 'consistency' means linearizability, not ACID's C."
+        },
+        {
+          "title": "Quorums",
+          "body": "With N replicas, writing to W and reading from R guarantees read-your-latest-write overlap when R + W > N. N=3, W=2, R=2 tolerates one node failure for both reads and writes. Quorums alone do not give linearizability: concurrent writes, sloppy quorums and hinted handoff, and clock-based LWW can still produce stale or lost data. Strong guarantees need consensus (Raft/Paxos) or careful read repair plus versioning."
+        },
+        {
+          "title": "Sagas instead of distributed transactions",
+          "body": "A saga splits a business transaction into local transactions, each with a compensating action. Orchestration (a central coordinator) is easier to reason about; choreography (events) is more decoupled but harder to follow. Requirements: every step and compensation must be idempotent and retryable, and you must accept intermediate visible states. This is the exact pattern for multi-step agent workflows that touch external systems: book flight, book hotel, and if the hotel fails, cancel the flight."
+        },
+        {
+          "title": "Fencing tokens",
+          "body": "A client holding a lease can pause (GC, network) past expiry while another client acquires the lock. Without protection both write. A fencing token is a monotonically increasing number issued with each lock grant; the storage layer rejects writes carrying a lower token than the highest it has seen. This makes the lock safe regardless of timing."
+        }
+      ]
+    },
+    {
+      "id": "sd-reliability",
+      "title": "Resilience and scalability patterns",
+      "summary": "How systems survive load and failure.",
+      "items": [
+        "Timeouts everywhere; deadline propagation",
+        "Retries with exponential backoff and jitter; retry budgets; retry amplification",
+        "Circuit breakers, bulkheads, fallbacks, graceful degradation",
+        "Load shedding, admission control, priority queues, backpressure",
+        "Rate limiting algorithms: token bucket, leaky bucket, fixed/sliding window; distributed implementation",
+        "Horizontal scaling and statelessness; session handling",
+        "Autoscaling policies and their lag",
+        "Multi-region: active-passive, active-active, data replication, failover, traffic steering",
+        "Disaster recovery: backups, RPO/RTO, restore testing",
+        "Cell-based architecture and blast-radius reduction",
+        "Deployment safety: canary, feature flags, dark launches",
+        "Observability for distributed systems: tracing, correlation IDs, SLOs",
+        "Cost-aware design: unit economics, tiered storage, spot capacity"
+      ],
+      "questions": [
+        "Design a distributed rate limiter for 10M users across regions.",
+        "How do retries cause cascading failure and what stops it?",
+        "Design a multi-region active-active chat backend."
+      ],
+      "resources": [
+        "Release It!",
+        "AWS Builders' Library",
+        "Google SRE Book: Handling overload and Addressing cascading failures"
+      ],
+      "concepts": [
+        {
+          "title": "Distributed rate limiter design",
+          "body": "Algorithm: token bucket per key (refill rate + burst). Implementation: Redis with an atomic Lua script (GET tokens/timestamp, refill, decrement) keyed by user/API key; sharded by key hash. Trade-offs: central Redis is accurate but adds ~1 ms and a dependency; local limiters with periodic sync are fast but allow overshoot; sticky routing keeps counts local. On Redis failure choose fail-open (availability) or fail-closed (protect backend) by endpoint risk. For LLM products, limit on tokens and concurrent requests, not just request count, and enforce cost budgets per tenant."
+        },
+        {
+          "title": "Retry amplification",
+          "body": "If each of 3 layers retries 3 times, one user request becomes 27 attempts on the bottom service exactly when it is struggling. Mitigation: retry only at one layer, use retry budgets (e.g. retries <= 10% of requests), exponential backoff with full jitter, propagate deadlines, and make servers shed load fast with 429/503 + Retry-After. This applies directly to LLM providers during rate-limit storms."
+        }
+      ]
+    },
+    {
+      "id": "sd-api-comm",
+      "title": "APIs and service communication",
+      "summary": "Contracts between systems.",
+      "items": [
+        "REST design: resources, status codes, idempotency, pagination (cursor vs offset), filtering",
+        "gRPC and protobuf evolution; GraphQL trade-offs and N+1",
+        "Realtime delivery: polling, long-polling, SSE, WebSockets, WebTransport; fan-out and connection management",
+        "Presence and connection servers at scale (millions of sockets)",
+        "Webhooks vs polling vs streams",
+        "Versioning and backward compatibility",
+        "Service-to-service auth: mTLS, SPIFFE, service tokens",
+        "Monolith vs microservices vs modular monolith; when to split",
+        "Backends-for-frontends, API composition, aggregation",
+        "Service mesh and sidecars; when they are worth it",
+        "Event-driven architecture and schema registries"
+      ],
+      "questions": [
+        "Cursor vs offset pagination: why does offset break at scale?",
+        "Design the connection layer for 5M concurrent WebSocket users."
+      ],
+      "resources": [
+        "Google API Design Guide",
+        "Microservices Patterns (Richardson)",
+        "Building Microservices (Newman)"
+      ]
+    },
+    {
+      "id": "sd-classic-cases",
+      "title": "Classic case studies",
+      "summary": "Practice these end to end, out loud, with numbers. Each one teaches a reusable pattern.",
+      "items": [
+        "URL shortener (ID generation, caching, analytics)",
+        "Distributed rate limiter / API gateway",
+        "News feed / timeline (fan-out on write vs read, celebrity problem)",
+        "Chat system like WhatsApp/Slack (ordering, delivery receipts, presence, offline sync)",
+        "Notification system (multi-channel, dedupe, prioritization)",
+        "Key-value store / distributed cache (replication, partitioning, quorum)",
+        "Distributed message queue / Kafka-like log",
+        "Web crawler (politeness, frontier, dedupe)",
+        "Search autocomplete / typeahead",
+        "Video streaming (upload pipeline, transcoding, adaptive bitrate, CDN)",
+        "File sync / Dropbox (chunking, delta sync, conflict handling)",
+        "Ride-hailing / proximity service (geo-index, matching, surge)",
+        "Payments system (idempotency, ledger, reconciliation, exactly-once effects)",
+        "Ticket booking / inventory (overselling, locking, queues)",
+        "Distributed job scheduler / cron",
+        "Metrics and monitoring system (time-series storage, aggregation, alerting)",
+        "Google Docs style collaborative editor (OT/CRDT)",
+        "Leaderboard / real-time analytics (Redis sorted sets, streaming aggregation)"
+      ],
+      "questions": [
+        "Design Twitter's home timeline for 300M users with celebrities.",
+        "Design a payment system that never double-charges.",
+        "Design a collaborative document editor."
+      ],
+      "resources": [
+        "Alex Xu vol. 1 and 2",
+        "Hello Interview breakdowns",
+        "High Scalability case studies",
+        "Engineering blogs: Uber, Discord, Stripe, Netflix"
+      ],
+      "concepts": [
+        {
+          "title": "News feed: fan-out trade-off",
+          "body": "Fan-out on write pushes each new post into followers' precomputed feeds (fast reads, expensive writes, wasteful for inactive users). Fan-out on read assembles at request time (cheap writes, slow reads). Hybrid is standard: push for normal users, pull for celebrities (millions of followers) and merge at read time. Feeds live in Redis lists/sorted sets capped to N items; posts stored separately and hydrated by ID; ranking is a separate service."
+        },
+        {
+          "title": "Payments: never double charge",
+          "body": "Client sends an idempotency key; server stores key → result atomically with the charge attempt. Use a double-entry ledger (immutable append-only entries that sum to zero) rather than mutating balances. State machine per payment (created → authorized → captured → settled / failed / refunded). Call external processors with their idempotency keys, handle unknown outcomes by querying status before retrying, and reconcile daily against processor reports. Outbox pattern publishes events reliably."
+        }
+      ]
+    },
+    {
+      "id": "sd-ai-llm-systems",
+      "title": "AI system design: LLM products",
+      "summary": "What interviewers at AI companies actually ask. Combine classic skills with token economics and non-determinism.",
+      "items": [
+        "ChatGPT-style chat service: streaming, conversation storage, context management, multi-model routing",
+        "LLM gateway / AI proxy: auth, quotas, routing, fallbacks, caching, cost attribution, observability",
+        "Enterprise RAG platform: ingestion, ACL-aware retrieval, hybrid search, reranking, citations, evals, multi-tenancy",
+        "Semantic search at billion-vector scale: sharded ANN, filtering, tiered storage, re-embedding",
+        "Production LLM inference platform: batching, autoscaling GPUs, routing by prefix, multi-LoRA, cold starts",
+        "Prompt/model evaluation platform: datasets, runs, judges, regression gates, dashboards",
+        "Fine-tuning / training platform: job scheduling, data pipelines, checkpoints, registry, deploy",
+        "Real-time voice assistant: streaming ASR → LLM → TTS, barge-in, latency budget < 800 ms",
+        "Recommendation system: candidate generation, ranking, features, online/offline split",
+        "Content moderation pipeline: classifiers, human review queues, appeals",
+        "Document processing pipeline: OCR/VLM extraction, validation, human-in-the-loop",
+        "Semantic cache and prompt cache design",
+        "Cost and capacity modeling for token-heavy workloads"
+      ],
+      "questions": [
+        "Design ChatGPT. Cover streaming, storage, scaling and abuse prevention.",
+        "Design an internal LLM gateway for 50 teams with budgets and failover.",
+        "Design enterprise search over Slack, Drive and Jira with per-user permissions.",
+        "Design a semantic cache. When is it unsafe?"
+      ],
+      "resources": [
+        "Chip Huyen: AI Engineering",
+        "Eugene Yan: system design for ML",
+        "Uber, Pinterest, Netflix ML platform posts",
+        "Machine Learning System Design Interview (Aminian & Xu)"
+      ],
+      "concepts": [
+        {
+          "title": "Design a ChatGPT-like service (outline)",
+          "body": "Requirements: streaming chat, history, multiple models, 10M DAU, p95 TTFT < 2 s. API: POST /conversations/{id}/messages with SSE response; GET history. Edge: CDN/WAF, auth, per-user rate limit on requests, tokens and concurrency. Chat service (stateless) builds the prompt from stored history + system prompt + retrieved memory, truncating or summarizing to the window, then calls an inference router. Router picks model/pool by tier, load and prefix-cache affinity (consistent hash on conversation ID) and does admission control with queues and priority for paid users. GPU pools run vLLM-like engines with continuous batching, autoscaled on queue depth and KV-cache pressure. Tokens stream back through SSE; a stream-persistence step writes the final message to the DB (partitioned by user, e.g. Postgres/Cassandra/Dynamo) asynchronously, with a recovery path if the client disconnects (generation continues, client resumes by message ID). Safety: input/output moderation in parallel with generation, with the ability to cut the stream. Observability: TTFT, tokens/s, queue time, error rate, cost per conversation. Failure modes: GPU pool saturation (shed free-tier traffic, degrade to smaller model), provider/model outage (fallback), hot conversations, abuse (denial-of-wallet)."
+        },
+        {
+          "title": "Design an LLM gateway",
+          "body": "Responsibilities: unified API across providers, authentication and per-key/team budgets, rate limiting by tokens and concurrency, routing and fallback on errors/latency, caching (exact and semantic with strict scoping), request/response logging with PII redaction, cost attribution, guardrail hooks, retries with jitter and circuit breakers per upstream, and streaming passthrough. Data plane must be stateless and horizontally scalable with a small hot-path footprint (budgets in Redis with async reconciliation to a durable ledger). Control plane (config, keys, policies) stored in Postgres and pushed to data-plane nodes. Key trade-off: strict budget enforcement (central counter, more latency) vs approximate enforcement (local counters, overshoot)."
+        },
+        {
+          "title": "Enterprise RAG platform: the hard parts",
+          "body": "1) Connectors and incremental sync (webhooks/cursors) with deletes propagated. 2) Permissions: store source ACLs as metadata and filter at query time (pre-filter in the vector DB, or over-fetch then post-filter with a permissions service); handle ACL changes without full re-index. 3) Hybrid retrieval (BM25 + vectors, RRF) then cross-encoder rerank on top ~50. 4) Tenant isolation: per-tenant collections/namespaces or row-level filters, encryption keys per tenant. 5) Evaluation: golden queries per tenant, retrieval recall@k, faithfulness judged continuously. 6) Freshness vs cost: tiered indexing, embedding batch jobs, blue-green index swaps when the embedding model changes. 7) Citations and refusal behavior."
+        },
+        {
+          "title": "Voice agent latency budget",
+          "body": "Target ~800 ms mouth-to-ear. Endpointing/VAD ~200 ms, streaming ASR final ~100–200 ms, LLM time-to-first-token ~250–400 ms (small/fast model, cached prefix, co-located), TTS first audio chunk ~100–200 ms, network ~50–100 ms. Techniques: stream every stage, start TTS on the first sentence/clause, speculative generation while the user is still finishing, keep models and media server in one region, WebRTC transport, barge-in handling that cancels the LLM and TTS pipeline instantly."
+        }
+      ]
+    },
+    {
+      "id": "sd-ai-agent-systems",
+      "title": "AI system design: agent platforms",
+      "summary": "Designing the infrastructure that runs agents safely at scale.",
+      "items": [
+        "Agent runtime architecture: orchestrator, workers, tool executors, state store",
+        "Durable execution and checkpointing for long-running agents; resume after crash",
+        "Sandbox infrastructure for code execution: microVMs, pooling, snapshots, network policies",
+        "Tool and MCP gateway: registry, auth delegation, per-user credentials, audit",
+        "Human-in-the-loop approvals and async interrupts",
+        "Multi-agent coordination: shared state, message passing, task queues, conflict avoidance",
+        "Scheduling agents: triggers, cron, event-driven, priority and fairness",
+        "Memory service: short/long-term stores, retrieval, write policies, privacy",
+        "Cost control: per-run budgets, step limits, caching, model tiering",
+        "Evaluation and replay infrastructure: record/replay of trajectories, simulation environments",
+        "Multi-tenant isolation for agent workloads (data, compute, credentials)",
+        "Streaming progress and event logs to clients; resumable streams",
+        "Agent identity and authorization: acting on behalf of users, OAuth token vaulting",
+        "Rollout of new agent versions: shadow, canary, trajectory-diff evals"
+      ],
+      "questions": [
+        "Design a platform that lets customers run thousands of long-lived agents. Walk through isolation, state and cost.",
+        "Design a coding agent product like Devin/Claude Code on the web: sandbox lifecycle, repo access, secrets, scaling.",
+        "Design a deep-research agent that fans out 50 parallel searches and synthesizes a cited report.",
+        "How would you make an agent workflow survive a worker crash mid-tool-call without double side effects?"
+      ],
+      "resources": [
+        "Anthropic engineering: multi-agent research system, effective harnesses for long-running agents",
+        "Temporal docs: durable execution",
+        "Firecracker and gVisor papers",
+        "E2B / Modal sandboxes"
+      ],
+      "concepts": [
+        {
+          "title": "Agent runtime with durable execution",
+          "body": "Model each agent run as a workflow: the orchestrator is deterministic code; each LLM call and tool call is an activity whose result is recorded in an event history. On crash, replay history to rebuild state and continue from the last completed step. Side-effecting tools get idempotency keys derived from (run_id, step_id) so a retried step cannot double-execute. Human approval becomes a signal the workflow waits on for hours or days at zero compute. Cost: history size grows, so compact long trajectories and store large payloads in blob storage by reference."
+        },
+        {
+          "title": "Sandbox platform for code-running agents",
+          "body": "Isolation: microVMs (Firecracker) or gVisor, not plain containers, because the code is untrusted. Lifecycle: warm pool of pre-booted VMs for sub-second start, snapshot/restore to resume a session's filesystem and memory, hard TTLs and resource quotas (CPU, RAM, disk, wall time, process count). Network: default-deny egress, allow-list through a proxy that injects credentials (the sandbox never sees secrets), log all requests. Files: mount repo read-write on an overlay, persist artifacts to object storage. Scaling: bin-pack on bare-metal hosts, autoscale pool on demand, evict idle sessions. Security review checklist: escape surface, side channels between tenants, metadata endpoint blocking, noisy neighbor limits."
+        },
+        {
+          "title": "Deep research agent architecture",
+          "body": "Lead agent plans and decomposes the question, spawns N sub-agents in parallel, each with its own context window and search/fetch tools; sub-agents return compressed findings with sources. A synthesis step writes the report; a citation/verification agent checks claims against sources. Infrastructure: task queue with concurrency limits, per-run token and time budgets, shared scratch store (memory) so the lead can persist its plan when its context fills, result caching of fetched pages, rate limiting per domain, and trajectory logging for eval. Trade-offs: multi-agent uses several times more tokens than single-agent chat, so reserve it for high-value, parallelizable questions."
+        }
+      ]
+    },
+    {
+      "id": "sd-data-ml-systems",
+      "title": "Data and ML system design",
+      "summary": "Feature platforms, recommenders, search ranking, training systems.",
+      "items": [
+        "Online/offline feature store architecture and consistency",
+        "Two-stage recommenders: retrieval (ANN, two-tower) then ranking, then re-ranking and business rules",
+        "Search ranking: query understanding, retrieval, learning-to-rank, evaluation",
+        "Ads/CTR prediction systems and calibration",
+        "Fraud detection: streaming features, low-latency scoring, human review loops",
+        "Real-time analytics pipelines: Kafka → Flink → OLAP store",
+        "Training data pipeline: logging, joining labels, sampling, backfills",
+        "Model registry and deployment controller",
+        "A/B testing platform: assignment, exposure logging, metrics, guardrails",
+        "Cold start problems and exploration (bandits)"
+      ],
+      "questions": [
+        "Design a recommendation system for 100M users. Where does each model run and what is its latency budget?",
+        "Design a fraud detection system with 100 ms decisions."
+      ],
+      "resources": [
+        "Machine Learning System Design Interview",
+        "Designing Machine Learning Systems",
+        "Netflix, Uber Michelangelo, Meta posts"
+      ]
+    },
+    {
+      "id": "sd-security-tenancy",
+      "title": "Security, multi-tenancy and cost in design",
+      "summary": "Cross-cutting concerns that make a design senior.",
+      "items": [
+        "Threat modeling during design; trust boundaries",
+        "AuthN/AuthZ architecture: gateway auth, service auth, policy engines (OPA, Cedar), Zanzibar-style ReBAC",
+        "Tenant isolation models: silo, pool, bridge; noisy-neighbor control",
+        "Encryption at rest and in transit, KMS, envelope encryption, per-tenant keys",
+        "Secrets distribution and rotation",
+        "Audit logging and tamper evidence",
+        "Data residency and deletion guarantees",
+        "Cost modeling in design: per-request, per-tenant, per-token unit economics",
+        "Build vs buy decisions and vendor lock-in",
+        "Capacity planning and headroom; load testing against the design"
+      ],
+      "questions": [
+        "How do you design permission checks for 1B documents (Zanzibar-style)?",
+        "Silo vs pooled multi-tenancy for an AI SaaS: how do you choose?"
+      ],
+      "resources": [
+        "Google Zanzibar paper",
+        "AWS SaaS Lens",
+        "NIST threat modeling guidance"
+      ]
+    },
+    {
+      "id": "sd-storage-engines",
+      "title": "Storage engines and data structures",
+      "summary": "What happens under the database: how bytes are laid out, indexed and compacted, and which structure fits which workload.",
+      "items": [
+        "B-tree vs LSM-tree: write path, read path, write and read amplification",
+        "Write-ahead log, checkpoints and crash recovery",
+        "SSTables, memtables, compaction strategies (size-tiered vs leveled)",
+        "Bloom filters, skip lists, tries, HyperLogLog and count-min sketch: what each answers and its error",
+        "Row vs column storage; when columnar wins (analytics, compression, vectorized scans)",
+        "Time-series databases: chunking, downsampling, retention",
+        "Vector indexes: HNSW, IVF, product quantization; recall vs latency vs memory",
+        "Inverted indexes and ranking (BM25) for search",
+        "Change data capture and the outbox pattern for keeping derived stores in sync",
+        "Choosing a store from the access pattern, not from fashion"
+      ],
+      "questions": [
+        "Why are LSM-trees good at writes and what do you pay for it?",
+        "How does a Bloom filter save reads and what is its failure mode?",
+        "Pick a store for 500k events per second of metrics and justify it."
+      ],
+      "resources": [
+        "Designing Data-Intensive Applications chapters 3 and 11",
+        "Database Internals by Alex Petrov",
+        "RocksDB wiki: compaction"
+      ],
+      "concepts": []
+    },
+    {
+      "id": "sd-tradeoffs",
+      "title": "Trade-offs and decision making",
+      "summary": "Senior interviews grade the reasoning, not the diagram. Practice naming the trade-off and picking with numbers.",
+      "items": [
+        "Consistency vs availability vs latency (CAP and PACELC applied to a real feature)",
+        "Latency vs throughput and the effect of batching",
+        "Cost vs reliability: how many nines, and what each nine costs",
+        "Build vs buy, managed vs self-hosted, with an exit plan",
+        "Push vs pull, sync vs async, orchestration vs choreography",
+        "Normalize vs denormalize; precompute vs compute on read",
+        "Monolith vs services; when a modular monolith is the right answer",
+        "Capacity planning with headroom, and the cost of over-provisioning",
+        "Writing an ADR (architecture decision record) with alternatives and revisit triggers",
+        "Stating assumptions and asking the questions that change the design"
+      ],
+      "questions": [
+        "Your design has a single leader. Defend it, then say when you would abandon it.",
+        "Give two designs for the same feature, one cheap and one resilient, and compare them in numbers.",
+        "What would make you split this monolith?"
+      ],
+      "resources": [
+        "Google SRE book: embracing risk",
+        "Michael Nygard ADR template",
+        "The Pragmatic Programmer: tracer bullets"
+      ],
+      "concepts": []
+    },
+    {
+      "id": "sd-migrations-evolution",
+      "title": "Migrations and system evolution",
+      "summary": "Real systems change under traffic. Know how to move data and traffic without downtime.",
+      "items": [
+        "Expand and contract schema changes; backward and forward compatible APIs",
+        "Online resharding and dual writes with verification",
+        "Strangler fig migration from a monolith",
+        "Shadow traffic, canary and blue-green releases; automatic rollback",
+        "Feature flags as a release tool and their cleanup debt",
+        "Backfills: idempotent, throttled, resumable",
+        "Zero-downtime database upgrades and failover drills",
+        "Deprecating APIs: versioning, telemetry, sunset policy",
+        "Changing embedding models or prompts safely: dual index, shadow evals, staged cutover",
+        "Postmortems and learning loops after failed migrations"
+      ],
+      "questions": [
+        "Migrate a 20 TB table to a new shard key with no downtime. Walk through it.",
+        "How do you roll out a new embedding model without losing recall?",
+        "What do you verify before switching reads to the new store?"
+      ],
+      "resources": [
+        "Stripe: online migrations at scale",
+        "Martin Fowler: StranglerFigApplication",
+        "Evolutionary Database Design"
+      ],
+      "concepts": []
+    },
+    {
+      "id": "sd-practice",
+      "title": "Mock practice routine",
+      "summary": "Reading is not enough. System design is a spoken, drawn skill.",
+      "items": [
+        "Do 3 classic mocks out loud with a timer",
+        "Do 3 AI-system mocks (LLM gateway, RAG platform, agent platform) out loud",
+        "Redraw each diagram from memory the next day",
+        "Write a 2-page design doc for one system including trade-offs and failure modes",
+        "Do 2 peer mock interviews and collect feedback",
+        "Build a small working version of one design (e.g. rate limiter, gateway) to ground intuition",
+        "Review 3 real postmortems and map them to design lessons"
+      ],
+      "questions": [
+        "Pick a system you built. Re-design it for 100x scale and explain what breaks first."
+      ],
+      "resources": [
+        "Pramp / interviewing.io",
+        "Hello Interview mocks",
+        "Postmortem collections (danluu/post-mortems)"
+      ]
+    }
+  ]
+}

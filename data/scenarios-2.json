@@ -1,0 +1,237 @@
+[
+  {
+    "id": "llm-provider-outage",
+    "phase": "llm-engineering",
+    "kind": "incident",
+    "title": "The LLM provider is returning 429s and 500s",
+    "situation": "Your product depends on one model API; errors spike and users see failures.",
+    "steps": [
+      {"label": "First minutes", "items": ["Check the provider status page and your error classes: 429 (your limits), 5xx (their outage), timeouts. Check whether your own retry loop is amplifying load."]},
+      {"label": "Mitigate", "items": ["Fall back to a second provider or a smaller model behind your gateway; open the circuit breaker for the failing provider.", "Queue non-interactive work and process later; serve cached answers for repeated prompts; degrade features (shorter outputs, disable agents)."]},
+      {"label": "Fix and prevent", "items": ["Multi-provider gateway with health checks, per-provider limits and automatic failover; retries with exponential backoff and jitter capped by a budget; request priorities.", "Evaluate fallback models on your golden set so a fallback is known to be acceptable; keep prompts portable."]}
+    ],
+    "followups": [{"q": "How do you handle 429s specifically?", "a": "Honor Retry-After, back off with jitter, smooth traffic with a client-side token bucket sized to your quota (requests and tokens per minute), raise the quota with the provider, and spread load across keys or regions where terms allow."}]
+  },
+  {
+    "id": "llm-quality-drop",
+    "phase": "llm-engineering",
+    "kind": "incident",
+    "title": "Answer quality suddenly dropped after a model or prompt change",
+    "situation": "Users report worse answers; a deploy or provider model update happened this week.",
+    "steps": [
+      {"label": "Confirm with data", "items": ["Run the golden eval set against current and previous prompt/model versions; compare scores. Look at online signals: thumbs down, regeneration rate, task success."]},
+      {"label": "Isolate the change", "items": ["Pin model versions (provider silently updating an alias changes behavior); diff prompts, tools, retrieval, parameters (temperature), context truncation and post-processing."]},
+      {"label": "Mitigate", "items": ["Roll back to the pinned previous version or prompt through config, not a redeploy; reduce traffic to the new variant."]},
+      {"label": "Prevent", "items": ["Version prompts and models in config; eval gates in CI on every change; canary and A/B rollout with quality metrics; track drift with sampled LLM-judge scoring in production."]}
+    ],
+    "followups": [{"q": "No eval set exists. What do you do?", "a": "Collect 50-100 real traces now, label failures by reading them, build a failure taxonomy and a small golden set with code-based checks where possible. This is the highest-leverage investment before any further changes."}]
+  },
+  {
+    "id": "llm-hallucination",
+    "phase": "llm-engineering",
+    "kind": "incident",
+    "title": "The assistant confidently gave a customer wrong information",
+    "situation": "A support bot invented a refund policy; a customer complained publicly.",
+    "steps": [
+      {"label": "Contain", "items": ["Correct the customer, add a temporary guardrail or disable that topic, and preserve the trace for analysis."]},
+      {"label": "Diagnose", "items": ["Was the correct policy retrievable? If retrieval failed, fix chunking and search. If it was retrieved but ignored, fix the prompt and ordering. If no source existed, the model should have abstained."]},
+      {"label": "Fix", "items": ["Ground answers in retrieved sources with citations; instruct to say 'I do not know' when context is missing; add a faithfulness check (claims supported by context) before sending; route policy and money questions to templates or humans."]},
+      {"label": "Prevent", "items": ["Add this case to the regression eval set; monitor faithfulness scores; human review of high-risk intents; clear UX disclaimers and escalation paths."]}
+    ],
+    "followups": [{"q": "Can you eliminate hallucinations?", "a": "No. You reduce and bound them: grounding, abstention, verification, constrained outputs, human review for high-stakes cases and measurement. State the residual risk."}]
+  },
+  {
+    "id": "llm-model-choice",
+    "phase": "llm-engineering",
+    "kind": "design",
+    "title": "Prompting, RAG, or fine-tuning for this requirement?",
+    "situation": "A team wants the model to answer questions about internal docs in the company style.",
+    "steps": [
+      {"label": "Clarify", "items": ["Is the gap knowledge (facts that change), behavior (format, tone, skill), or capability (reasoning)? How much data and how often does it change? Latency and cost limits?"]},
+      {"label": "Decision rule", "items": ["Start with prompting and examples; add RAG for changing or private knowledge with citations; fine-tune for consistent style, format, tool-use reliability or distilling a large model into a small cheap one.", "Fine-tuning rarely adds reliable new facts."]},
+      {"label": "Recommend here", "items": ["RAG over the docs for facts plus a system prompt and few-shot examples for style; consider a small fine-tune later if style consistency or cost demands it, backed by an eval set."]},
+      {"label": "Trade-offs", "items": ["RAG adds retrieval latency and infrastructure; fine-tuning adds data prep, training cost and a model to maintain and re-train when the base model changes."]}
+    ],
+    "followups": [{"q": "When is long context better than RAG?", "a": "For small, stable corpora where cost per query is acceptable and retrieval errors are the main risk; RAG wins for large or changing corpora and for cost control and citations."}]
+  },
+  {
+    "id": "llm-structured-output",
+    "phase": "llm-engineering",
+    "kind": "incident",
+    "title": "The model's JSON output keeps breaking our parser",
+    "situation": "A pipeline fails on malformed or incomplete JSON a few percent of the time.",
+    "steps": [
+      {"label": "Reduce the failure rate", "items": ["Use the provider's structured outputs or JSON schema mode (constrained decoding) or tool calling with a schema; lower temperature; keep the schema simple with enums."]},
+      {"label": "Handle residual failures", "items": ["Validate with a schema library; on failure retry once with the validation error in the prompt; fall back to a repair step or a stronger model; cap retries and log failures."]},
+      {"label": "Watch for", "items": ["Truncation by max_tokens (increase the limit or shorten output), markdown fences, extra prose, schema drift after prompt edits."]},
+      {"label": "Prevent", "items": ["Track parse-failure rate as a metric with alerts; add failing samples to the eval set."]}
+    ],
+    "followups": [{"q": "Does constrained decoding guarantee correct values?", "a": "It guarantees syntactic validity against the schema, not semantic correctness. You still validate business rules."}]
+  },
+  {
+    "id": "rag-wrong-answers",
+    "phase": "rag",
+    "kind": "incident",
+    "title": "The RAG assistant answers wrongly or says it cannot find things that exist",
+    "situation": "Users report irrelevant answers although the documents contain the information.",
+    "steps": [
+      {"label": "Split retrieval from generation", "items": ["Take failing questions, inspect retrieved chunks. Is the right chunk in the top 50? In the top 5? If not, it is a retrieval problem; if yes but the answer is wrong, it is generation."]},
+      {"label": "Retrieval fixes", "items": ["Chunking that preserves structure and context (headings, parent-child); add hybrid BM25 plus vectors with reciprocal rank fusion; add a cross-encoder reranker; rewrite or decompose queries; add metadata filters; check embedding model suitability and index staleness."]},
+      {"label": "Generation fixes", "items": ["Order context best-first and limit size; instruct to answer only from context and cite; abstain when missing."]},
+      {"label": "Measure", "items": ["Build a labeled question set with expected sources; track recall@k, MRR, faithfulness; regression-test every change."]}
+    ],
+    "followups": [{"q": "Why might good embeddings still retrieve badly?", "a": "Short queries vs long chunks mismatch, exact identifiers and rare terms need keyword search, chunks lose context, or documents are stale or duplicated. Hybrid search, contextual chunk headers and reranking address these."}]
+  },
+  {
+    "id": "rag-stale-docs",
+    "phase": "rag",
+    "kind": "incident",
+    "title": "The bot quotes a policy that was changed last month",
+    "situation": "Index still contains the old version of a document next to the new one.",
+    "steps": [
+      {"label": "Diagnose", "items": ["Check ingestion: does it detect updates and deletes? Are old chunks removed when a document changes? Are both versions retrievable?"]},
+      {"label": "Fix", "items": ["Document-level ids and content hashes; on change delete old chunks and insert new ones atomically (or build a new index and swap an alias); handle deletions via CDC or periodic reconciliation; store effective dates and prefer the latest version."]},
+      {"label": "Prevent", "items": ["Ingestion monitoring (lag, failures), freshness metrics per source, tests that updated documents replace old answers, citations with last-updated dates in answers."]}
+    ],
+    "followups": [{"q": "How do you re-index everything after changing the embedding model?", "a": "Build a parallel index with the new model, shadow-query both against an eval set, switch the alias gradually and keep the old index for rollback."}]
+  },
+  {
+    "id": "rag-design-enterprise",
+    "phase": "rag",
+    "kind": "design",
+    "title": "Design enterprise search over 5 million documents with per-user permissions",
+    "situation": "Employees ask questions; they must only see documents they are allowed to access.",
+    "steps": [
+      {"label": "Clarify", "items": ["Sources and formats, freshness, permission model (ACLs, groups), latency target, citation requirements, scale of users and QPS."]},
+      {"label": "Architecture", "items": ["Connectors with incremental sync and permission sync; parse, clean, chunk with metadata (source, ACL principals, dates); embeddings plus keyword index; hybrid retrieval with the ACL filter applied inside the query; reranker; LLM with citations; evaluation and feedback loops."]},
+      {"label": "Permissions", "items": ["Filter at retrieval time using principals the user belongs to; keep ACL changes synchronized quickly (permission changes are security-critical); never rely on the LLM to hide content."]},
+      {"label": "Trade-offs", "items": ["Filtering hurts ANN recall if done after search; large group memberships complicate filters; freshness vs ingestion cost; per-tenant indexes vs shared index with filters."]}
+    ],
+    "followups": [{"q": "A user loses access to a document. What happens?", "a": "The permission sync updates the ACL metadata (or the group membership resolved at query time) promptly; retrieval filters exclude it immediately after the sync, and caches keyed by user or ACL must be invalidated."}]
+  },
+  {
+    "id": "agent-loop-runaway",
+    "phase": "agents",
+    "kind": "incident",
+    "title": "An agent got stuck in a loop and burned $2,000 of tokens overnight",
+    "situation": "A background agent repeated the same failing tool call for hours.",
+    "steps": [
+      {"label": "Stop the bleeding", "items": ["Kill the run, revoke or cap the API key budget, disable the agent trigger; check for other runs in the same state."]},
+      {"label": "Find the loop", "items": ["Replay the trace: repeated identical tool calls, an error message the model could not act on, a tool returning huge output, or a termination condition the model never met."]},
+      {"label": "Fix", "items": ["Hard limits on steps, tokens, wall time and spend per run; loop detection (hash of tool name plus args; abort or escalate after N repeats); informative tool errors telling the model how to fix the call; truncate large outputs; escalate to a human after K failures."]},
+      {"label": "Prevent", "items": ["Per-tenant and per-key budgets with alerts; trace everything; add this trace to the eval suite; run background agents with timeouts and a dead-man switch."]}
+    ],
+    "followups": [{"q": "How do you detect loops?", "a": "Track a rolling window of (tool, normalized arguments, result hash); if the same signature repeats beyond a threshold or progress metrics stall, inject a corrective message once and then abort or escalate."}]
+  },
+  {
+    "id": "agent-wrong-action",
+    "phase": "agents",
+    "kind": "incident",
+    "title": "The coding agent deleted files it should not have touched",
+    "situation": "An autonomous agent ran a destructive command in the wrong directory.",
+    "steps": [
+      {"label": "Recover", "items": ["Restore from version control or backups; assess what else it changed (diff, audit log); rotate any exposed credentials."]},
+      {"label": "Root cause", "items": ["Over-broad permissions, no sandbox, ambiguous instruction, no approval gate on destructive actions, tool allowing arbitrary shell."]},
+      {"label": "Fix", "items": ["Run in a sandbox or container with the repo mounted and no access beyond it; allowlist commands, block destructive patterns or require approval; work on a branch or copy with checkpoints; dry-run mode that shows the plan before execution."]},
+      {"label": "Prevent", "items": ["Least privilege credentials, immutable backups, audit logs, evals for dangerous scenarios (including prompt-injected instructions)."]}
+    ],
+    "followups": [{"q": "How do you balance autonomy and safety?", "a": "Tier actions by risk: auto-approve reads and reversible edits, require approval for irreversible or external actions, and sandbox everything. Measure how often approvals are needed to tune the policy."}]
+  },
+  {
+    "id": "agent-workflow-vs-agent",
+    "phase": "agents",
+    "kind": "design",
+    "title": "Should this be an agent or a fixed workflow?",
+    "situation": "A team wants an 'AI agent' to process insurance claims.",
+    "steps": [
+      {"label": "Clarify", "items": ["Are the steps known and stable? What is the cost of a wrong action? Volume, latency and cost targets, audit requirements."]},
+      {"label": "Decision rule", "items": ["Known steps: workflow with LLM calls at specific points (extraction, classification, drafting) and code for the rest. Open-ended exploration with unpredictable steps: agent with tools and limits."]},
+      {"label": "Recommend", "items": ["Claims are mostly a known process: use a workflow with an LLM for document extraction and triage, deterministic rules for policy checks, human approval for payouts, and an agent only for open-ended investigation of complex cases."]},
+      {"label": "Trade-offs", "items": ["Workflows are cheaper, faster and easier to audit but less flexible; agents handle novelty but cost more and need guardrails and evals."]}
+    ],
+    "followups": [{"q": "How do you evaluate it?", "a": "End-to-end task success on labeled claims, per-step accuracy (extraction, triage), cost and latency, and a review sample of edge cases with human adjudication."}]
+  },
+  {
+    "id": "agent-memory-design",
+    "phase": "agents",
+    "kind": "design",
+    "title": "The agent forgets earlier context in long sessions",
+    "situation": "After 50 turns the agent contradicts earlier decisions and the context window is full.",
+    "steps": [
+      {"label": "Options", "items": ["Summarize older turns and keep recent turns verbatim; a scratchpad or plan file the agent updates; external memory (vector or key-value) with retrieval; sub-agents with isolated contexts that return short results."]},
+      {"label": "Recommend", "items": ["Keep a structured state object (goals, decisions, open questions) outside the transcript, compact history periodically, and retrieve long-term facts by relevance with a write policy to avoid junk."]},
+      {"label": "Pitfalls", "items": ["Summaries losing key details (keep decisions and constraints verbatim), stale or wrong memories, memory poisoning by untrusted content, cost of re-sending the whole history every step."]}
+    ],
+    "followups": [{"q": "How do you test memory?", "a": "Create long scripted sessions with facts introduced early and checked late, measure recall and contradiction rates, and test after compaction."}]
+  },
+  {
+    "id": "eval-no-signal",
+    "phase": "evals-observability",
+    "kind": "design",
+    "title": "We changed the prompt. How do we know it is better?",
+    "situation": "The team debates prompt versions based on a few examples they tried by hand.",
+    "steps": [
+      {"label": "Build the measuring stick", "items": ["Collect real traces; read them; build a failure taxonomy; create a golden set covering common cases and known failures with programmatic checks wherever possible, LLM-judge with a rubric for subjective criteria."]},
+      {"label": "Validate the judge", "items": ["Compare the judge to human labels on a sample; check agreement; use pairwise comparison and randomize order to limit position bias."]},
+      {"label": "Compare variants", "items": ["Run both versions on the set, compare per-category scores with confidence intervals; then A/B online with guardrail metrics (latency, cost, thumbs-down)."]},
+      {"label": "Make it routine", "items": ["Run evals in CI on every prompt, tool or model change; track scores over time; add every production failure to the set."]}
+    ],
+    "followups": [{"q": "What are LLM-judge pitfalls?", "a": "Position and verbosity bias, self-preference, drifting rubrics, and judging without ground truth. Mitigate with calibration against human labels, rubrics with concrete criteria, and code checks for objective facts."}]
+  },
+  {
+    "id": "obs-cannot-debug",
+    "phase": "evals-observability",
+    "kind": "incident",
+    "title": "A user reports a bad agent answer and we cannot reproduce it",
+    "situation": "No traces exist for that session; the model is non-deterministic.",
+    "steps": [
+      {"label": "What you need next time", "items": ["End-to-end traces with a trace id per request: prompt versions, retrieved chunks, tool calls and results, model, parameters, latency and tokens, final output, user feedback."]},
+      {"label": "Right now", "items": ["Reconstruct from logs and whatever state was stored; re-run with the same inputs at temperature 0 to see if the failure is reproducible; check recent changes."]},
+      {"label": "Fix", "items": ["Add tracing (OpenTelemetry-style spans for each step), store inputs and outputs with redaction, a replay tool that re-runs a trace with a new prompt, and a feedback button linked to the trace id."]},
+      {"label": "Operate", "items": ["Sample traces into review queues and eval datasets, dashboards for cost, latency and quality scores, alerts on error and refusal rates."]}
+    ],
+    "followups": [{"q": "Privacy concerns about storing prompts?", "a": "Redact PII and secrets before storing, apply retention limits and access controls, get consent where required, and store content only for sampled or failed traces if needed."}]
+  },
+  {
+    "id": "sec-prompt-injection",
+    "phase": "safety-security",
+    "kind": "incident",
+    "title": "A document told the agent to exfiltrate data and it complied",
+    "situation": "An email summarizer read a message containing hidden instructions and sent internal data to an external URL.",
+    "steps": [
+      {"label": "Contain", "items": ["Disable the affected tool or agent, revoke credentials it used, block the destination, preserve traces; assess what data left and notify according to policy."]},
+      {"label": "Root cause", "items": ["Untrusted content treated as instructions; an agent with both access to private data and an outbound channel (the lethal trifecta: private data, untrusted content, external communication)."]},
+      {"label": "Fix", "items": ["Separate trusted instructions from untrusted data and label it; remove or gate the outbound channel (allowlisted domains, no auto-rendered links or images); least-privilege scoped credentials; human approval for sending data out; output filtering for secrets and URLs; sandboxing."]},
+      {"label": "Prevent", "items": ["Adversarial test suites including indirect injection through documents, web pages and tool results; monitoring of tool calls for anomalies; defense in depth since no prompt-only defense is reliable."]}
+    ],
+    "followups": [{"q": "Why can't a better system prompt solve it?", "a": "Models cannot reliably distinguish instructions from data in the same context, so prompt-only defenses can be bypassed. Architectural controls (permissions, isolation, approvals) are required."}]
+  },
+  {
+    "id": "sec-pii-leak",
+    "phase": "safety-security",
+    "kind": "incident",
+    "title": "Customer PII showed up in logs and prompts sent to a third party",
+    "situation": "A compliance review found raw personal data in LLM traces and provider requests.",
+    "steps": [
+      {"label": "Contain", "items": ["Stop sending the data (disable the feature or add redaction immediately), restrict access to the logs, and start the legal and privacy incident process."]},
+      {"label": "Assess", "items": ["Identify which data, which users, which vendors, and for how long; check provider data retention and training terms."]},
+      {"label": "Fix", "items": ["PII detection and redaction before logging and before external calls; tokenization or pseudonymization; zero-retention provider settings and DPAs; log scrubbing; purge existing data per policy."]},
+      {"label": "Prevent", "items": ["Data classification, privacy review in design, automated tests for PII in logs, access controls and audit, retention limits, regional processing where required."]}
+    ],
+    "followups": [{"q": "How do you let the model work with PII safely?", "a": "Minimize what is sent, replace identifiers with tokens and map them back after the call, use providers and regions that meet your contracts, and keep sensitive operations in deterministic code."}]
+  },
+  {
+    "id": "sec-guardrail-design",
+    "phase": "safety-security",
+    "kind": "design",
+    "title": "Design guardrails for a customer-facing assistant",
+    "situation": "Leadership wants it safe, on-topic and brand-appropriate without ruining usefulness.",
+    "steps": [
+      {"label": "Threats to cover", "items": ["Prompt injection and jailbreaks, off-topic or harmful content, PII leakage, hallucinated commitments, abuse and denial of wallet."]},
+      {"label": "Layers", "items": ["Input: rate limits, length limits, moderation and injection classifiers. Prompt: clear role and rules, untrusted data delimited. Tools: least privilege and approvals. Output: schema validation, moderation, PII and secret filters, groundedness check. Fallbacks: safe refusal and human handoff."]},
+      {"label": "Operate", "items": ["Red-team regularly, log blocked events, review false positives (over-blocking hurts users), measure refusal rate and escape rate, update with new attacks."]},
+      {"label": "Trade-offs", "items": ["Each layer adds latency and cost and risks false positives; tune thresholds per risk tier."]}
+    ],
+    "followups": [{"q": "How do you test guardrails?", "a": "Maintain an adversarial dataset of jailbreaks, injections and borderline requests, run it in CI, and track attack success rate and false-positive rate together."}]
+  }
+]

@@ -1,0 +1,102 @@
+[
+  {
+    "id": "rate-limiting",
+    "phase": "system-design",
+    "group": "Resilience",
+    "title": "Rate limiting algorithms (deep dive)",
+    "tagline": "Five algorithms, their formulas, their failure modes, and how to pick one in an interview.",
+    "viz": "ratelimit-compare",
+    "explain": "A rate limiter caps how much work a caller can demand in a period. It protects capacity (one client cannot starve others), protects cost (LLM tokens, paid APIs), protects security (brute force, scraping) and shapes traffic into what downstream systems can absorb.\n\nDecisions before choosing an algorithm:\n\n- What is the key: IP, user, API key, tenant, endpoint, or a combination? Authenticated identity beats IP, which breaks behind NAT and is easy to rotate.\n- What is the unit: requests, bytes, or cost (an LLM call costs tokens, a search costs more than a read)?\n- Do bursts matter: should a quiet client be allowed to spend saved-up capacity?\n- Where does it run: edge or CDN (coarse, cheap), API gateway (per key), inside each service (protects the service itself). Layer them.\n- What happens on limit: reject with 429 Too Many Requests plus Retry-After and X-RateLimit-Limit/Remaining/Reset headers, queue and delay (shaping), or degrade.\n- What happens when the limiter itself fails: fail-open keeps the product up but unprotected; fail-closed protects but can cause an outage. Most public APIs fail open with a local fallback limit.\n\nThe widget above feeds identical traffic into all five algorithms. Use the Boundary attack button, change W and L, and compare the 'max allowed in any W seconds' stat: that single number is what interviewers are really probing.",
+    "flows": [
+      {
+        "title": "One request through a distributed limiter",
+        "hint": "Step through the happy path and the rejected path.",
+        "nodes": [
+          {"id": "client", "label": "Client", "icon": "📱"},
+          {"id": "gw", "label": "API gateway", "sub": "extract key", "icon": "🚪"},
+          {"id": "redis", "label": "Redis (Lua)", "sub": "atomic check+update", "icon": "🗄️"},
+          {"id": "svc", "label": "Service", "icon": "⚙️"}
+        ],
+        "steps": [
+          {"at": "client", "note": "Request arrives with API key abc123 for POST /search", "ms": 0},
+          {"at": "gw", "note": "Gateway derives the limit key: rl:abc123:search and the cost (1 token)", "ms": 1},
+          {"at": "redis", "note": "One Lua script reads the state, refills tokens from elapsed time (Redis TIME), checks tokens >= cost and decrements: atomic, no race between check and update", "ms": 1},
+          {"at": "gw", "note": "Allowed: attach X-RateLimit-Remaining and forward", "ms": 0, "tone": "good"},
+          {"at": "svc", "note": "Service handles the request", "ms": 40, "tone": "good"},
+          {"at": "redis", "note": "Burst later: tokens < cost, script returns retry_after = (cost - tokens) / rate", "ms": 1, "tone": "warn"},
+          {"at": "gw", "note": "Reject with 429 and Retry-After: 2. The service never sees the request", "ms": 0, "tone": "bad"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "1. Fixed window counter",
+        "body": "Idea: divide time into aligned windows of W seconds. Keep one counter per key per window. Allow while count < L.\n\nFormula: window_id = floor(t / W). allow iff counter[key, window_id] < L, then counter += 1.\n\nRedis implementation: INCR key:window_id and EXPIRE it to W (or 2W) on first increment. O(1) memory per key, one round trip.\n\nThe flaw, the boundary burst: a client sends L requests in the last second of window k and L more in the first second of window k+1. Both windows are within quota, yet 2L requests arrive in about 2 seconds, twice the intended rate. The worst case in a span of length W is 2L (the boundary attack widget shows 2L within about a second).\n\nPros: trivial, tiny memory, easy to shard and to display to users ('resets at 12:01'). Cons: burst at edges, cliff-like behavior, synchronized reset can cause a thundering herd of retries right at the boundary.\n\nUse it for coarse quotas (per-day API plan, per-minute caps where 2x edge bursts are acceptable)."
+      },
+      {
+        "title": "2. Sliding window log",
+        "body": "Idea: store the timestamp of every allowed request. For a new request at time t, drop timestamps <= t − W, then allow iff the remaining count < L.\n\nFormula: allow iff |{ t_i : t − W < t_i <= t }| < L. After allowing, append t.\n\nAccuracy: exact. In any window of length W, never more than L allowed. No boundary problem.\n\nCost: memory O(L) per key (a timestamp per request in the window), and cleanup work on each request. For 1,000 users with L = 1,000/min that is up to 1M timestamps. Rejected requests should not be stored (or an attacker can keep the window full forever with blocked requests and extend their own lockout; decide this deliberately).\n\nRedis implementation (sorted set, score = timestamp, run as one Lua script):\n\n```\nZREMRANGEBYSCORE key -inf (now - W)\nif ZCARD key < L then\n  ZADD key now unique_id\n  PEXPIRE key W\n  return 1\nelse return 0\n```\n\nUse it when exactness matters and L is small: login attempts (5 per 15 min), password reset, expensive operations, or when you must report the exact retry time (the oldest timestamp + W)."
+      },
+      {
+        "title": "3. Sliding window counter (the approximation)",
+        "body": "Idea: keep two fixed-window counters, the previous window and the current one, and weight the previous one by how much of it still overlaps the sliding window ending now.\n\nFormula: estimate = prev × (1 − elapsed / W) + current, where elapsed = t mod W is how far we are into the current window. Allow iff estimate + 1 <= L (or estimate < L), then current += 1.\n\nWorked example. W = 60 s, L = 100. Previous window had 84 requests. Current window has 36 so far. We are 15 s into the window, so the previous window overlaps the sliding window by (60 − 15) / 60 = 0.75.\n\nestimate = 84 × 0.75 + 36 = 63 + 36 = 99. One more request makes 100, which is allowed. The next is rejected until time passes: at 30 s in, weight is 0.5 so estimate = 42 + 36 = 78 and there is room again.\n\nThe assumption: requests in the previous window were evenly spread. If all 84 happened in its first second, they have really expired from the sliding window and the estimate is too high (false rejections). If all happened in its last second, the estimate is too low (extra requests slip through). Cloudflare measured on 400 million requests that only about 0.003% were wrongly allowed or limited, so the error is small for typical traffic, and it never exceeds the fixed-window error bound.\n\nCost: two integers per key, O(1) time. Cheap like fixed window, smooth like a log. This is the common production default when you want sliding behavior at scale."
+      },
+      {
+        "title": "4. Token bucket",
+        "body": "Idea: a bucket holds up to B tokens and refills at rate r tokens per second. Each request spends cost tokens (usually 1). If there are not enough tokens, reject.\n\nFormulas:\n\n- Lazy refill (no timer needed): tokens = min(B, tokens + (now − last) × r); last = now.\n- Allow iff tokens >= cost; then tokens −= cost.\n- Parameters: B is the maximum burst, r is the long-run average rate. Choose r = L / W to match 'L per window'.\n- Guarantee: in any interval of length T, at most B + r × T requests are allowed. So a client that was idle can burst up to B instantly, then is held to r.\n- Time until allowed when empty: wait = (cost − tokens) / r. That is your Retry-After.\n\nState: two numbers per key (tokens, last_refill_ts). O(1) memory and time.\n\nWhy it is popular: it allows controlled bursts (good for real clients), is cheap, and supports variable cost naturally (an LLM request costs its estimated tokens, an expensive endpoint costs 5). Stripe and AWS API Gateway use token-bucket style limits.\n\nRedis Lua sketch:\n\n```\nlocal t = redis.call('TIME')            -- use the server clock, not the client's\nlocal now = t[1] + t[2] / 1e6\nlocal s = redis.call('HMGET', KEYS[1], 'tokens', 'ts')\nlocal tokens = math.min(B, (tonumber(s[1]) or B) + (now - (tonumber(s[2]) or now)) * r)\nif tokens >= cost then\n  redis.call('HSET', KEYS[1], 'tokens', tokens - cost, 'ts', now)\n  redis.call('PEXPIRE', KEYS[1], ttl)\n  return {1, tokens - cost}\nend\nreturn {0, (cost - tokens) / r}\n```"
+      },
+      {
+        "title": "5. Leaky bucket and GCRA",
+        "body": "Leaky bucket has two meanings, and interviewers expect you to know both.\n\nAs a queue (traffic shaper): requests enter a FIFO queue of size Q and are processed at a constant rate r. If the queue is full, new requests are dropped. Output is perfectly smooth, but bursts add queueing delay and old requests can starve fresh ones. Used in network traffic shaping and where downstream needs a steady feed (a payment processor that allows 10 calls per second).\n\nAs a meter (rate limiter): a counter 'level' drains at rate r. Each request adds 1; reject if level + 1 > capacity. Formula: level = max(0, level − (now − last) × r); allow iff level + 1 <= C. Mathematically this is the mirror image of the token bucket: level = C − tokens. With the same B and r they accept exactly the same requests; the difference is only whether you think of 'free capacity' or 'used capacity'.\n\nToken bucket vs leaky bucket in one line: token bucket allows bursts up to B and then runs at r; leaky bucket (queue) smooths output to exactly r and delays bursts instead of letting them through.\n\nGCRA (Generic Cell Rate Algorithm) is the leaky-bucket meter stored as a single timestamp. Keep TAT (theoretical arrival time). Emission interval T = 1 / r, burst tolerance τ = (burst − 1) × T. On a request at time t: if t < TAT − τ reject; otherwise TAT = max(TAT, t) + T and allow. One value per key, one atomic compare-and-set, no refill math. Used by redis-cell and many API platforms."
+      },
+      {
+        "title": "6. Going distributed: correctness traps",
+        "body": "Single node is easy. The interview difficulty is in distribution.\n\n- Race conditions: read-count then write-count from two app servers lets both pass. Make the check and update one atomic operation: a Redis Lua script, INCR (atomic by itself for fixed window), or a compare-and-set.\n- Clock: use the store's clock (Redis TIME) rather than each app server's clock, or skew makes windows disagree.\n- Latency: a network hop per request. Mitigations: local in-memory counters with periodic sync (approximate, can overshoot by roughly instances × sync-interval × rate), or give each gateway a slice of the budget (token leasing: pull 50 tokens at a time).\n- Sharding the limiter store: hash the limit key (consistent hashing) so one key lives on one node; replicate for failover and accept that a failover may briefly forget counts (fails open for a moment).\n- Hot keys: one very large customer can overload a single Redis shard. Split their bucket into N sub-buckets with limit L/N, or move them to a dedicated shard.\n- Failure mode: if Redis is down, fail open with a conservative local limit rather than blocking all traffic. State the choice.\n- Multi-region: global exactness needs cross-region coordination (slow). Usually give each region a share of the global limit and rebalance periodically; accept bounded overshoot.\n- Cost-based limits: LLM APIs limit tokens per minute as well as requests per minute. Reserve estimated tokens (prompt plus max output) at admission and refund the difference after the response, using a token bucket with variable cost.\n- Layering: edge limit by IP (cheap, coarse), gateway limit by API key and plan, service limit to protect itself (concurrency limiter / load shedding), plus a global concurrency cap for expensive resources like GPUs."
+      },
+      {
+        "title": "7. Clients: being a good citizen",
+        "body": "Servers return 429 with Retry-After (seconds or an HTTP date). Well-behaved clients: honor Retry-After, use exponential backoff with jitter (sleep = random(0, min(cap, base × 2^attempt))), cap total retries, and spread scheduled jobs so they do not all start on the minute. A limiter without good client behavior just converts overload into a retry storm; pair it with backoff, circuit breakers and load shedding.\n\nConcurrency limits are different from rate limits: a rate limit caps requests per time, a concurrency limit caps requests in flight. For slow downstreams (LLM inference) a concurrency limit (or adaptive limit like AIMD or Little's law: concurrency = rate × latency) is often the better protection."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Algorithm comparison",
+        "head": ["Algorithm", "State per key", "Accuracy", "Bursts", "Output smoothing", "Complexity", "Best for"],
+        "rows": [
+          ["Fixed window", "1 counter", "Up to 2x limit at window edges", "Allows edge bursts", "None", "Very low", "Coarse quotas, daily or monthly plans"],
+          ["Sliding log", "L timestamps", "Exact", "Never exceeds L per W", "None", "High memory, O(L)", "Low limits needing exactness: login, OTP, reset"],
+          ["Sliding counter", "2 counters", "Approximate (tiny error)", "Close to exact", "None", "Very low", "General API limits at scale"],
+          ["Token bucket", "tokens + timestamp", "Exact long-run rate, burst up to B", "Allowed up to B", "None (bursty)", "Low", "Public APIs, variable cost, LLM tokens"],
+          ["Leaky bucket (queue)", "queue + timer", "Exact output rate", "Absorbed into the queue as delay", "Perfectly smooth", "Medium (queue)", "Shaping traffic for a fixed-rate downstream"],
+          ["Leaky bucket (meter) / GCRA", "1 timestamp", "Same as token bucket", "Allowed up to burst tolerance", "None", "Very low", "Memory-tight high-scale limiting"]
+        ]
+      },
+      {
+        "title": "Formula cheat sheet",
+        "head": ["Algorithm", "Decision rule", "Update"],
+        "rows": [
+          ["Fixed window", "count[floor(t/W)] < L", "count += 1"],
+          ["Sliding log", "|{t_i : t − W < t_i <= t}| < L", "append t"],
+          ["Sliding counter", "prev × (1 − (t mod W)/W) + cur + 1 <= L", "cur += 1 (rotate windows)"],
+          ["Token bucket", "min(B, tokens + (t − last) × r) >= cost", "tokens −= cost; last = t"],
+          ["Leaky meter", "max(0, level − (t − last) × r) + 1 <= C", "level += 1; last = t"],
+          ["GCRA", "t >= TAT − τ,  T = 1/r,  τ = (burst − 1) × T", "TAT = max(TAT, t) + T"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Accuracy vs memory: the log is exact but O(L); counters are O(1) but approximate.", "Burst tolerance vs protection: token buckets let clients spend savings, which is friendly but allows spikes up to B.", "Central exactness vs latency: a shared store is exact but adds a hop and a dependency; local counters are fast but drift."],
+    "pitfalls": ["Check-then-increment across servers without atomicity.", "Using client clocks or application server clocks for window math.", "Rate limiting by IP behind a NAT or proxy and punishing a whole office.", "No Retry-After header, so clients retry immediately and make it worse.", "Counting rejected requests in a way that lets an attacker extend their own lockout, or not counting them and allowing infinite probing: choose deliberately."],
+    "interview": ["Design a distributed rate limiter.", "Explain sliding window counter and its formula.", "Why does fixed window allow 2x bursts?", "Token bucket vs leaky bucket?", "How do you rate limit LLM tokens per minute?"],
+    "use": ["Token bucket for public APIs where bursts are normal and cost varies.", "Sliding window counter as the scalable default when you want near-exact limits.", "Sliding log for small, security-sensitive limits (logins, OTP).", "Fixed window for simple plan quotas.", "Leaky bucket queue to protect a downstream that needs a steady rate."],
+    "avoid": ["Fixed window when edge bursts could hurt a fragile downstream.", "Sliding log at very high limits per key; memory explodes.", "A single global Redis key for all traffic; shard by limit key.", "Rate limiting alone as overload protection; pair it with load shedding and concurrency limits."],
+    "qa": [
+      {"q": "Explain how sliding window counter works and give the formula.", "a": "Keep counters for the current and previous fixed windows. At time t, with elapsed = t mod W, estimate the number of requests in the sliding window (t − W, t] as prev × (1 − elapsed / W) + current. Allow if estimate + 1 <= L, then increment current. Example: W = 60, L = 100, prev = 84, current = 36, elapsed = 15 s gives 84 × 0.75 + 36 = 99, so one more request is allowed. It assumes the previous window's requests were evenly distributed, so it is an approximation, but very accurate in practice and costs two integers per key."},
+      {"q": "Why not just use sliding window log everywhere?", "a": "It is exact but stores a timestamp per allowed request, so memory is O(L) per key and cleanup costs time on every call. At L = 10,000 per minute across a million keys that is billions of entries. I would use it only for small limits where exactness matters, such as five login attempts per fifteen minutes."},
+      {"q": "Compare token bucket and sliding window.", "a": "A sliding window enforces 'at most L in any W-second span', which is strict about bursts. A token bucket enforces a long-run rate r with a burst allowance B: in any interval T it allows at most B + rT. The bucket lets an idle client burst, which is usually desirable for real clients, and it handles variable cost easily. Choose the window when a hard per-span cap is the requirement, and the bucket when you want friendly burst behavior."},
+      {"q": "How would you implement this across 50 API servers?", "a": "Keep state in Redis, keyed by the limit key, and perform check and update atomically in a Lua script using Redis TIME. Shard keys across a Redis cluster with consistent hashing, replicate for failover, and decide fail-open with a small local limiter as fallback. To cut latency, let each server lease a batch of tokens and refill from Redis when it runs low, accepting small overshoot. Handle hot tenants by splitting their bucket or isolating them on a dedicated shard."},
+      {"q": "What does the boundary attack against fixed window look like?", "a": "With L = 100 per minute, send 100 requests at 12:00:59 and 100 more at 12:01:00. Each window sees 100, so none is rejected, yet 200 arrive within a second. That is twice the intended rate, and it is the main reason to prefer sliding window or bucket algorithms for fragile downstreams."},
+      {"q": "How do you limit an LLM API by tokens per minute?", "a": "Use a token bucket where the unit is LLM tokens. At admission, charge the estimated cost: prompt tokens plus the max_tokens you allow for output. After the response, refund the unused part using actual usage. Also keep a requests-per-minute limit and a concurrency limit, since GPU capacity is bounded by in-flight work, not only by throughput."},
+      {"q": "Rate limiter vs load shedding vs backpressure?", "a": "A rate limiter enforces a per-caller policy regardless of system health. Load shedding drops work based on current server overload (by priority or queue age) to preserve goodput. Backpressure pushes a slow-down signal upstream through the system (bounded queues, flow control). A robust system uses all three."}
+    ]
+  }
+]

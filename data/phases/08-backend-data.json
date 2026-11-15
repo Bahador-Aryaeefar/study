@@ -1,0 +1,101 @@
+{
+  "id": "backend-data",
+  "title": "Backend and Data Engineering",
+  "tagline": "AI products are backend products. Services, databases, queues and pipelines.",
+  "level": "core",
+  "color": "#22d3ee",
+  "topics": [
+    {
+      "id": "backend-services",
+      "title": "Building backend services",
+      "summary": "FastAPI-style services that front models and agents.",
+      "items": [
+        "FastAPI / Starlette: routing, dependency injection, async, background tasks",
+        "Streaming responses (SSE, WebSockets) for token streaming",
+        "AuthN/AuthZ: OAuth2, OIDC, JWT, RBAC/ABAC, API key management",
+        "Multi-tenancy patterns",
+        "Rate limiting and quota systems (token bucket, sliding window)",
+        "Idempotency keys and request deduplication",
+        "Webhooks: signing, retries, ordering",
+        "Background jobs and queues: Celery, RQ, Arq, SQS, Kafka consumers",
+        "Long-running tasks: job IDs, polling, callbacks, resumability",
+        "Node/TypeScript backend basics (Next.js API routes, Hono, Express) for full-stack agents",
+        "gRPC services and protobuf contracts"
+      ],
+      "questions": ["Design the API for a long-running agent task that the client can resume after disconnect.", "Implement a per-user token-based rate limiter."],
+      "resources": ["FastAPI docs", "System Design Interview (Xu)", "Stripe API design posts"]
+    },
+    {
+      "id": "databases",
+      "title": "Databases and storage",
+      "summary": "Pick the right store; know the internals.",
+      "items": [
+        "Relational model, normalization, transactions, isolation levels, MVCC",
+        "Postgres in depth: indexes (B-tree, GIN, GiST, HNSW), EXPLAIN, vacuum, partitioning, JSONB",
+        "Connection pooling (PgBouncer) and why it matters for serverless",
+        "Replication, failover, read replicas, replication lag",
+        "NoSQL families: key-value (Redis, DynamoDB), document (MongoDB), wide-column (Cassandra), graph (Neo4j)",
+        "Redis: data structures, caching, pub/sub, streams, persistence trade-offs",
+        "LSM trees vs B-trees",
+        "Object storage (S3) semantics and consistency",
+        "Search engines: Elasticsearch/OpenSearch inverted index",
+        "OLAP: ClickHouse, BigQuery, Snowflake, DuckDB",
+        "Schema migrations and zero-downtime changes",
+        "Storing conversations, traces and agent state efficiently"
+      ],
+      "questions": ["Explain isolation levels and a bug each one allows.", "When would you not use Postgres?", "Design the schema for storing agent conversation trees with branching."],
+      "resources": ["Designing Data-Intensive Applications (Kleppmann)", "Use The Index, Luke", "CMU 15-445 database course"]
+    },
+    {
+      "id": "messaging",
+      "title": "Queues, streams and events",
+      "summary": "Decouple, buffer and scale.",
+      "items": [
+        "Message queue vs log: SQS/RabbitMQ vs Kafka/Redpanda/Pulsar",
+        "Delivery semantics: at-most-once, at-least-once, exactly-once (and the truth about it)",
+        "Consumer groups, partitions, ordering guarantees",
+        "Dead-letter queues and poison messages",
+        "Outbox pattern, change data capture (Debezium)",
+        "Event sourcing and CQRS",
+        "Backpressure and load shedding",
+        "Sagas and compensating actions for multi-step workflows"
+      ],
+      "questions": ["How do you get effectively-once processing?", "Kafka vs SQS: how do you choose?"],
+      "resources": ["Kafka: The Definitive Guide", "Enterprise Integration Patterns", "microservices.io patterns"]
+    },
+    {
+      "id": "data-pipelines",
+      "title": "Data pipelines and platforms",
+      "summary": "Training data, feature data, and analytics all need pipelines.",
+      "items": [
+        "Batch vs streaming; lambda vs kappa architectures",
+        "Orchestrators: Airflow, Dagster, Prefect",
+        "Spark, Ray, Dask for distributed processing",
+        "dbt and analytics engineering",
+        "Lakehouse: Parquet, Delta, Iceberg, Hudi",
+        "Feature stores: Feast, Tecton; online vs offline consistency",
+        "Streaming: Flink, Spark Structured Streaming",
+        "Data contracts, lineage, catalogs, governance",
+        "Data quality testing and SLAs"
+      ],
+      "questions": ["How do you prevent train/serve skew in features?", "Design a pipeline that turns raw user conversations into a fine-tuning dataset safely."],
+      "resources": ["Fundamentals of Data Engineering (Reis, Housley)", "Dagster and Airflow docs"]
+    },
+    {
+      "id": "frontend-for-ai",
+      "title": "Frontend for AI products",
+      "summary": "You should be able to ship the whole stack for an agent product.",
+      "items": [
+        "React / Next.js fundamentals, server components, streaming",
+        "Streaming UI for tokens, tool calls and partial JSON",
+        "Generative UI and artifacts patterns",
+        "Vercel AI SDK, assistant-ui, CopilotKit",
+        "State management for long-running agent sessions",
+        "UX for trust: citations, progress, cancel, undo, approvals",
+        "Accessibility and latency perception"
+      ],
+      "questions": ["How do you render a tool call that streams in partially?"],
+      "resources": ["Next.js docs", "Vercel AI SDK docs"]
+    }
+  ]
+}

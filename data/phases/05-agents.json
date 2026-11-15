@@ -1,0 +1,116 @@
+{
+  "id": "agents",
+  "title": "Agent Engineering",
+  "tagline": "The core of the role: designing, building and operating reliable autonomous LLM systems.",
+  "level": "core",
+  "color": "#fbbf24",
+  "topics": [
+    {
+      "id": "agent-fundamentals",
+      "title": "Agent fundamentals",
+      "summary": "What an agent is, and when you should not build one.",
+      "items": [
+        "Workflows vs agents: deterministic orchestration vs model-driven control",
+        "The agent loop: observe, think, act, repeat; stop conditions",
+        "Tool use / function calling mechanics end to end",
+        "ReAct, plan-and-execute, reflection, tree search",
+        "Single agent vs multi-agent: when each is justified",
+        "Autonomy levels and human-in-the-loop checkpoints",
+        "Cost, latency and reliability compounding across steps",
+        "Reasoning models inside agents: when thinking budget helps"
+      ],
+      "questions": [
+        "When would you use a workflow instead of an agent?",
+        "If each step is 95% reliable, what is the reliability of a 20-step task and how do you mitigate it?",
+        "Explain the full lifecycle of one tool call."
+      ],
+      "resources": ["Anthropic: Building Effective Agents", "ReAct paper", "OpenAI: A practical guide to building agents"]
+    },
+    {
+      "id": "tools-design",
+      "title": "Tool and interface design",
+      "summary": "The agent-computer interface decides most of your quality.",
+      "items": [
+        "Writing tool descriptions and schemas models use correctly",
+        "Tool granularity, naming, error messages written for the model",
+        "Returning concise, token-efficient results; pagination and truncation",
+        "Idempotent and reversible tools; dry-run modes",
+        "Model Context Protocol (MCP): servers, clients, transports, auth",
+        "Code execution tools and sandboxes (containers, gVisor, Firecracker)",
+        "Browser and computer-use agents",
+        "Parallel tool calls and dependency handling",
+        "Tool permissions, scopes and approval flows"
+      ],
+      "questions": ["Your agent keeps picking the wrong tool. How do you debug it?", "Design the MCP server for an internal ticketing system. What would the tools be?"],
+      "resources": ["modelcontextprotocol.io", "Anthropic: Writing tools for agents"]
+    },
+    {
+      "id": "memory-state",
+      "title": "Memory, state and context",
+      "summary": "Long-running agents live or die by context management.",
+      "items": [
+        "Short-term (context window) vs long-term (external) memory",
+        "Context compaction, summarization, note-taking and scratchpads",
+        "Episodic, semantic and procedural memory patterns",
+        "Retrieval-based memory and memory write policies",
+        "Checkpointing and resumable agent state",
+        "Sub-agents to isolate context",
+        "Context rot and managing long trajectories",
+        "User profiles and personalization with privacy controls"
+      ],
+      "questions": ["Design memory for a coding agent that runs for 8 hours.", "What do you store, when do you write, and how do you avoid poisoned memories?"],
+      "resources": ["MemGPT paper", "LangGraph persistence docs", "Anthropic: context engineering"]
+    },
+    {
+      "id": "orchestration",
+      "title": "Orchestration and frameworks",
+      "summary": "Know the frameworks, but be able to build without them.",
+      "items": [
+        "Build an agent loop from scratch with raw API calls",
+        "LangGraph: graphs, state, checkpointers, interrupts",
+        "OpenAI Agents SDK, Claude Agent SDK, Google ADK, Pydantic AI, CrewAI, AutoGen, LlamaIndex agents",
+        "Multi-agent patterns: orchestrator-worker, supervisor, handoffs, debate, swarm",
+        "Agent-to-agent protocols (A2A) and interoperability",
+        "Durable execution for long tasks: Temporal, Inngest, Restate",
+        "Background and scheduled agents, queues, triggers",
+        "Streaming intermediate steps to UIs",
+        "Framework trade-offs: abstraction cost, debuggability, lock-in"
+      ],
+      "questions": ["Orchestrator-worker vs peer multi-agent: which and why?", "Why use durable execution for agents?", "Would you adopt a framework or write your own loop?"],
+      "resources": ["LangGraph docs", "Temporal docs", "Anthropic: How we built our multi-agent research system"]
+    },
+    {
+      "id": "coding-agents",
+      "title": "Domain agent patterns",
+      "summary": "Reference architectures worth knowing in depth.",
+      "items": [
+        "Coding agents: repo navigation, edit tools, test loops, SWE-bench",
+        "Deep research agents: planning, parallel search, synthesis, citations",
+        "Customer support agents: policies, escalation, action tools",
+        "Data/SQL agents: schema grounding, safe execution, verification",
+        "Voice agents and real-time constraints",
+        "Browser/RPA agents and their failure modes",
+        "Agents as products: UX for trust, progress, undo, approvals"
+      ],
+      "questions": ["Design a coding agent that can fix GitHub issues. Walk through tools, loop and evals.", "How do you make a text-to-SQL agent safe on a production database?"],
+      "resources": ["SWE-bench", "Anthropic engineering blog", "Cognition / Cursor blog posts"]
+    },
+    {
+      "id": "agent-reliability",
+      "title": "Reliability and failure handling",
+      "summary": "Making non-deterministic loops behave in production.",
+      "items": [
+        "Loop detection, step and token budgets, timeouts",
+        "Verification steps and critic models",
+        "Retries, fallbacks, graceful degradation",
+        "Idempotency and exactly-once effects for side-effecting tools",
+        "Error recovery: letting the model see and fix its own errors",
+        "Guardrails on inputs, outputs and tool arguments",
+        "Determinism where possible: temperature, seeds, caching, record/replay",
+        "Taxonomy of agent failures: planning, tool, memory, coordination, specification"
+      ],
+      "questions": ["An agent got stuck in a loop and spent $400. How do you prevent a repeat?", "How do you make a payment-issuing agent safe?"],
+      "resources": ["Why Do Multi-Agent LLM Systems Fail? (MAST)", "Sierra tau-bench"]
+    }
+  ]
+}

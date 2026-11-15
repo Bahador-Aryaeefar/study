@@ -1,0 +1,348 @@
+[
+  {
+    "id": "kubernetes-core",
+    "phase": "devops-cloud",
+    "group": "Orchestration",
+    "title": "Kubernetes: how it works and how it breaks",
+    "tagline": "A control loop that keeps actual state equal to desired state.",
+    "viz": null,
+    "explain": "Kubernetes runs containers as Pods on nodes. You declare desired state (a Deployment with 3 replicas of an image); controllers continuously compare actual state to desired state and act: schedule pods, restart failed ones, roll out new versions.\n\nCore objects: Pod (one or more containers sharing network and storage), Deployment (manages ReplicaSets for rolling updates), Service (stable virtual IP and DNS in front of pods), Ingress/Gateway (HTTP routing), ConfigMap and Secret, StatefulSet (stable identity and storage), DaemonSet (one pod per node), Job/CronJob, HorizontalPodAutoscaler, PersistentVolumeClaim.",
+    "flows": [
+      {
+        "title": "What happens on kubectl apply",
+        "hint": "Declarative control loops all the way down.",
+        "nodes": [
+          {"id": "api", "label": "API server", "sub": "stores desired state", "icon": "🧠"},
+          {"id": "ctl", "label": "Controllers", "sub": "Deployment, ReplicaSet", "icon": "🔁"},
+          {"id": "sched", "label": "Scheduler", "sub": "pick a node", "icon": "📍"},
+          {"id": "kubelet", "label": "Kubelet", "sub": "run containers", "icon": "📦"},
+          {"id": "svc", "label": "Service", "sub": "route when Ready", "icon": "🌐"}
+        ],
+        "steps": [
+          {"at": "api", "note": "The manifest is validated, authorized and stored in etcd as the desired state", "ms": 20},
+          {"at": "ctl", "note": "The Deployment controller creates a ReplicaSet, which creates Pod objects (unscheduled)", "ms": 50},
+          {"at": "sched", "note": "The scheduler filters nodes by resource requests, taints, affinity and picks the best one", "ms": 30},
+          {"at": "kubelet", "note": "The kubelet on that node pulls the image and starts containers; failing probes cause restarts", "ms": 5000, "tone": "warn"},
+          {"at": "svc", "note": "Once the readiness probe passes, the pod joins the Service endpoints and receives traffic", "ms": 100, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Requests, limits, probes and rollouts",
+        "body": "Requests are what the scheduler reserves; limits are the cap. CPU over the limit is throttled; memory over the limit is OOMKilled (exit 137). QoS classes: Guaranteed (requests equal limits), Burstable, BestEffort (evicted first under pressure). Set requests near real usage (p90-p95) so scheduling is realistic and nodes are not overcommitted.\n\nProbes: readiness decides whether the pod gets traffic; liveness restarts a stuck container (use carefully: a slow dependency should not trigger restarts); startup probe protects slow-starting apps. Always have readiness; make it check the app's ability to serve, not its dependencies' health in a way that causes cascading unreadiness.\n\nRolling updates: maxSurge and maxUnavailable control how many extra and missing pods exist during rollout; a PodDisruptionBudget limits voluntary evictions (node drains). Graceful shutdown: SIGTERM, preStop hook, terminationGracePeriodSeconds; stop accepting new requests, finish in-flight work, then exit.\n\nAutoscaling: HPA scales replicas on CPU, memory or custom metrics (queue depth, RPS): desired = ceil(current × currentMetric / targetMetric). Cluster Autoscaler or Karpenter adds nodes for pending pods. VPA recommends requests. KEDA scales on events.\n\nNetworking: pod IPs are ephemeral; Services provide stable access (ClusterIP, NodePort, LoadBalancer); NetworkPolicies restrict traffic (default deny is good practice); DNS via CoreDNS.\n\nState: use StatefulSets with PersistentVolumes for databases only if you must; managed databases are usually safer. Storage classes and volume zones matter: a pod using a zonal volume can only run in that zone.\n\nSecurity: RBAC with least privilege, pod security standards (non-root, read-only filesystem, drop capabilities), secrets from an external manager, image scanning and signing, network policies, separate namespaces per team.\n\nTroubleshooting ladder: kubectl get events, describe pod (scheduling and probe failures), logs --previous (crash reason), exec into a pod, check resource pressure on nodes (kubectl top), DNS and Service endpoints (kubectl get endpoints), recent config changes.\n\nCommon states: Pending (no node fits: resources, taints, PVC unbound), ImagePullBackOff (image name, tag or registry auth), CrashLoopBackOff (app exits: config, dependency, OOM), Running but not Ready (readiness failing), Evicted (node pressure)."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Pod problems and first checks",
+        "head": ["Symptom", "Likely cause", "First command", "Typical fix"],
+        "rows": [
+          ["Pending", "No node has resources, taint mismatch, PVC unbound", "kubectl describe pod", "Adjust requests, add nodes, fix tolerations or storage"],
+          ["ImagePullBackOff", "Wrong tag, private registry auth", "describe pod events", "Fix image reference or pull secret"],
+          ["CrashLoopBackOff", "App crashes: config, DB unreachable, OOM", "logs --previous", "Fix config, raise memory, add startup probe"],
+          ["Running but not Ready", "Readiness probe failing", "describe pod, logs", "Fix the app or probe path and timing"],
+          ["OOMKilled (137)", "Memory above limit", "describe pod last state", "Raise limit, fix leak"],
+          ["Evicted", "Node memory or disk pressure", "kubectl describe node", "Set requests, add capacity, clean up"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Kubernetes standardizes deployment and scaling but adds substantial operational complexity.", "Tight resource limits save money but cause throttling and OOM kills."],
+    "pitfalls": ["No resource requests, so nodes overcommit and evict randomly.", "Aggressive liveness probes that kill healthy but slow pods.", "Running stateful databases in clusters without experience or backups."],
+    "interview": ["What happens when you apply a Deployment?", "A pod is in CrashLoopBackOff. Walk through debugging.", "How do requests and limits differ?"],
+    "use": ["Many services needing consistent deployment, scaling and self-healing.", "Teams with platform expertise or a managed offering (EKS, GKE, AKS).", "GPU scheduling with node pools and device plugins."],
+    "avoid": ["A single small app where a PaaS or serverless is simpler.", "Self-managing the control plane without need.", "Treating the cluster as a pet: hand edits instead of GitOps."],
+    "qa": [
+      {"q": "How do you roll out with zero downtime?", "a": "Use a Deployment with rolling update (maxUnavailable 0, maxSurge 25%), readiness probes so new pods only get traffic when ready, graceful shutdown with preStop and enough termination grace, PodDisruptionBudgets, and backward-compatible changes (including database migrations) so old and new versions coexist."},
+      {"q": "Pods keep getting OOMKilled. What do you do?", "a": "Compare usage against the limit over time to see whether it is a leak or a spike, check for large inputs or caches, profile the app, raise the limit with headroom if usage is legitimate, set requests accordingly, and add alerts on memory saturation."},
+      {"q": "How does the HPA decide replicas?", "a": "desired = ceil(current replicas × current metric / target metric), subject to min and max and stabilization windows. For queue workers scale on queue depth or lag with KEDA instead of CPU."}
+    ]
+  },
+  {
+    "id": "release-engineering",
+    "phase": "devops-cloud",
+    "group": "Delivery",
+    "title": "CI/CD and safe releases",
+    "tagline": "Small, frequent, reversible changes beat big careful ones.",
+    "viz": null,
+    "explain": "Continuous integration merges small changes often with automated checks. Continuous delivery keeps every merge deployable; continuous deployment ships it automatically. The goal is fast feedback and a low cost of rolling back.\n\nPipeline stages: lint and unit tests, build an immutable artifact (container image tagged by commit SHA), security scans (dependencies, secrets, images), integration tests, deploy to staging, smoke and end-to-end tests, progressive production rollout with automated verification.",
+    "flows": [
+      {
+        "title": "Canary release with automated rollback",
+        "hint": "Expose a small slice, check the metrics, widen or abort.",
+        "nodes": [
+          {"id": "build", "label": "Build + test", "icon": "🏗️"},
+          {"id": "stage", "label": "Staging", "icon": "🧪"},
+          {"id": "canary", "label": "Canary 5%", "icon": "🐤"},
+          {"id": "ramp", "label": "25% → 100%", "icon": "📈"},
+          {"id": "rb", "label": "Auto-rollback", "icon": "↩️"}
+        ],
+        "steps": [
+          {"at": "build", "note": "Immutable image built once, tagged by commit; the same artifact moves through every environment", "ms": 0},
+          {"at": "stage", "note": "Deployed to staging; smoke and end-to-end tests run against production-like config", "ms": 0},
+          {"at": "canary", "note": "5% of traffic goes to the new version; compare error rate, latency and business metrics against the baseline", "ms": 0, "tone": "warn"},
+          {"at": "ramp", "note": "If metrics hold for the bake time, widen in steps (25%, 50%, 100%)", "ms": 0, "tone": "good"},
+          {"at": "rb", "note": "If a guardrail trips, traffic shifts back automatically and the deploy halts with an alert", "ms": 0, "tone": "bad"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Deployment strategies, flags and database changes",
+        "body": "Rolling: replace instances gradually; cheap; both versions run briefly. Blue-green: two full environments, switch traffic atomically; instant rollback, double cost during the switch. Canary: small percentage first with metric checks; best risk control. Shadow (mirroring): copy production traffic to the new version without returning its responses; great for validating risky rewrites and ML models. Recreate: stop old, start new; downtime.\n\nFeature flags separate deploy from release: ship code dark, enable per user, percentage or tenant, and disable instantly without a deploy. Costs: flag debt (remove old flags), combinatorial testing, and flag service availability (default safely if it is down).\n\nDatabase changes with zero downtime (expand and contract): 1) expand: add new nullable columns or tables, 2) deploy code that writes both and reads old, 3) backfill in batches, 4) switch reads to new, 5) stop writing old, 6) contract: drop old columns later. Never rename or drop in the same release as the code change; keep old code working with the new schema so rollback is possible.\n\nMetrics for delivery performance (DORA): deployment frequency, lead time for changes, change failure rate, time to restore. Elite teams deploy many times a day with low failure rates; improving them comes from small batches, automation and fast rollback.\n\nQuality gates: required reviews, test coverage on critical paths (not a vanity percentage), contract tests between services, performance budgets, SAST and dependency scanning, signed images and provenance (SLSA), protected branches.\n\nGitOps: the desired state lives in Git; a controller (Argo CD, Flux) reconciles clusters to it, giving audit trails, review and easy rollback by reverting a commit.\n\nPipeline reliability: keep pipelines fast (under 10-15 minutes for the main path), cache dependencies, parallelize tests, quarantine flaky tests and fix them, and run expensive end-to-end suites after merge or nightly."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Deployment strategies",
+        "head": ["Strategy", "Rollback speed", "Extra cost", "Risk exposure", "Best for"],
+        "rows": [
+          ["Recreate", "Slow (redeploy)", "None", "Full, with downtime", "Dev environments, batch"],
+          ["Rolling", "Medium", "Low", "Gradual, mixed versions", "Default for stateless services"],
+          ["Blue-green", "Instant (switch back)", "Double capacity briefly", "All users at once after switch", "Big releases needing quick revert"],
+          ["Canary", "Fast (shift traffic)", "Low", "Small slice first", "Critical services with good metrics"],
+          ["Shadow", "N/A (no user impact)", "Duplicate load", "None to users", "Validating rewrites and models"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Progressive delivery lowers risk but needs good metrics and automation.", "More environments and checks slow the pipeline and cost money."],
+    "pitfalls": ["Rebuilding artifacts per environment so what is tested is not what ships.", "Destructive migrations in the same release as code.", "Flaky tests that teach everyone to ignore failures."],
+    "interview": ["Blue-green vs canary vs rolling?", "How do you do a zero-downtime schema change?", "How do you make deploys safe and fast?"],
+    "use": ["Canary with automated analysis for user-facing services.", "Feature flags for risky or gradual launches.", "GitOps for auditable infrastructure and app deploys."],
+    "avoid": ["Big-bang releases bundling many changes.", "Manual production changes outside the pipeline.", "Skipping rollback plans for migrations."],
+    "qa": [
+      {"q": "Error rate rose after a canary step. What should the system do?", "a": "Compare the canary against the baseline over the same window, and if it breaches thresholds (error rate, latency, key business metrics), automatically shift traffic back and stop the rollout, alert the owner and keep artifacts and logs for diagnosis. The decision rules should be defined before the deploy."},
+      {"q": "How do you rename a database column without downtime?", "a": "Expand and contract: add the new column, write to both, backfill, switch reads, stop writing the old column, and drop it in a later release. Each step is backward compatible so you can roll back at any point."}
+    ]
+  },
+  {
+    "id": "model-monitoring",
+    "phase": "mlops",
+    "group": "Operations",
+    "title": "Model serving, monitoring and drift",
+    "tagline": "A deployed model starts decaying on day one; you need to see it happen.",
+    "viz": null,
+    "explain": "Serving patterns: batch scoring (precompute predictions on a schedule), online inference (low-latency API), streaming inference, and edge deployment. Choose from latency, freshness and cost needs.\n\nMonitoring has layers: system metrics (latency, errors, throughput, GPU utilization), data quality (nulls, ranges, schema), data drift (input distribution shift), prediction drift (output distribution shift), and model performance (accuracy, business metrics) which often arrives late because labels are delayed.",
+    "flows": [
+      {
+        "title": "Detecting drift and responding",
+        "hint": "Inputs shift first; labels confirm later.",
+        "nodes": [
+          {"id": "prod", "label": "Production inputs", "icon": "📥"},
+          {"id": "stat", "label": "Drift statistics", "sub": "PSI / KS", "icon": "📊"},
+          {"id": "alert", "label": "Alert", "icon": "🚨"},
+          {"id": "retrain", "label": "Retrain + validate", "icon": "🏋️"},
+          {"id": "deploy", "label": "Shadow → canary", "icon": "🚀"}
+        ],
+        "steps": [
+          {"at": "prod", "note": "Log features and predictions for every request (or a sample) with model version and timestamp", "ms": 0},
+          {"at": "stat", "note": "Compare recent feature distributions with the training reference using PSI, KS test or JS divergence", "ms": 0, "tone": "warn"},
+          {"at": "alert", "note": "PSI above 0.25 or a significant KS result raises an alert; check whether upstream data or the world changed", "ms": 0, "tone": "bad"},
+          {"at": "retrain", "note": "Retrain on fresh data, validate against holdout and fairness checks, compare to the current model", "ms": 0},
+          {"at": "deploy", "note": "Shadow the candidate, canary it, watch business metrics, then promote with rollback ready", "ms": 0, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Drift types, statistics and training-serving skew",
+        "body": "Data (covariate) drift: P(X) changes while P(y|X) stays the same (new user mix, new device). Concept drift: P(y|X) changes (fraud tactics evolve, seasonality, policy changes), so the model becomes wrong even if inputs look the same. Label drift: P(y) changes (class balance shifts). Prediction drift: output distribution shifts, a cheap proxy when labels are delayed.\n\nStatistics: Population Stability Index PSI = Σ (actual% − expected%) × ln(actual% / expected%) over bins; rule of thumb: under 0.1 stable, 0.1-0.25 moderate shift, above 0.25 significant. Kolmogorov-Smirnov test compares empirical CDFs for continuous features; chi-square for categorical; Jensen-Shannon or KL divergence for distribution distance. With large samples tiny shifts become statistically significant, so also set practical thresholds.\n\nTraining-serving skew: features computed differently offline and online (different code paths, time windows, missing-value handling, leakage of future data). Prevent with a feature store or shared feature code, point-in-time correct joins for training, and tests comparing offline and online feature values for the same entities.\n\nPerformance without labels: track proxy metrics (prediction distribution, confidence, business KPIs), use delayed labels when they arrive, sample for human labeling, and monitor slices (by segment, region, device) because averages hide regressions.\n\nRetraining strategy: scheduled retraining (simple), triggered by drift or performance drop, or continuous/online learning (risky; needs guardrails). Always validate the candidate on a recent holdout and a frozen golden set, compare against the champion, and roll out through shadow and canary. Keep model versioning with lineage (data, code, parameters) in a registry for reproducibility and rollback.\n\nServing details: autoscale on utilization or queue depth, dynamic batching for GPU efficiency, model warmup, multi-model serving, A/B and shadow routing, fallbacks to rules or the previous model, latency budgets per stage, and timeouts with graceful degradation.\n\nLLM-specific: monitor prompt and response length, token cost, refusal and guardrail rates, retrieval hit quality, user feedback, and LLM-judge quality scores on sampled traffic; track provider model version changes."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Drift monitoring methods",
+        "head": ["Method", "Data type", "Output", "Note"],
+        "rows": [
+          ["PSI", "Binned numeric or categorical", "Single score (0.1/0.25 rules)", "Easy to explain; depends on binning"],
+          ["KS test", "Continuous", "Statistic and p-value", "Significant with big samples even for small shifts"],
+          ["Chi-square", "Categorical", "Statistic and p-value", "Needs adequate counts per category"],
+          ["Jensen-Shannon / KL", "Distributions", "Distance", "Good for dashboards"],
+          ["Prediction distribution", "Model outputs", "Shift in scores", "Works without labels"],
+          ["Delayed-label accuracy", "Labeled outcomes", "True performance", "Slow but authoritative"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Frequent retraining keeps models fresh but raises cost and the risk of shipping a bad model.", "Sensitive drift thresholds catch problems early but create alert noise."],
+    "pitfalls": ["Watching only system metrics and never model quality.", "Different feature code offline and online.", "Retraining automatically without validation gates."],
+    "interview": ["A model's performance dropped silently. How do you investigate?", "What is training-serving skew and how do you prevent it?", "How do you monitor when labels arrive weeks later?"],
+    "use": ["Feature and prediction monitoring on every production model.", "Shadow deployments for new models.", "Feature stores when many models share features."],
+    "avoid": ["Online learning without safeguards.", "Alerting on every statistically significant shift without a practical threshold."],
+    "qa": [
+      {"q": "Fraud model recall fell but input distributions look stable. What happened?", "a": "Likely concept drift: fraudsters changed behavior so the relationship between features and the label shifted. Check performance on recent labeled cases and by segment, review new fraud patterns, add features or retrain on recent data with higher weight, and shorten the retraining cycle."},
+      {"q": "How do you roll out a new model safely?", "a": "Validate offline on a frozen and a recent holdout, shadow it against live traffic to compare predictions, canary a small percentage while watching model and business metrics, and ramp with automatic rollback to the champion."}
+    ]
+  },
+  {
+    "id": "ml-metrics",
+    "phase": "math-ml",
+    "group": "Evaluation",
+    "title": "ML metrics, bias-variance and validation",
+    "tagline": "Choosing the right metric and split matters more than the algorithm.",
+    "viz": null,
+    "explain": "Classification metrics come from the confusion matrix (TP, FP, FN, TN). Accuracy = (TP + TN) / total misleads when classes are imbalanced (99% negatives means a model that always predicts negative scores 99%).\n\nPrecision = TP / (TP + FP): of those flagged, how many were right. Recall = TP / (TP + FN): of the real positives, how many were found. F1 = 2PR / (P + R), the harmonic mean. Choose by cost: fraud and disease screening favor recall; spam filtering of important mail favors precision.",
+    "flows": [
+      {
+        "title": "Choosing a metric and diagnosing error",
+        "hint": "Start from the business cost of each mistake.",
+        "nodes": [
+          {"id": "cost", "label": "Cost of FP vs FN", "icon": "⚖️"},
+          {"id": "metric", "label": "Pick metric", "icon": "📏"},
+          {"id": "split", "label": "Correct split", "icon": "✂️"},
+          {"id": "diag", "label": "Bias or variance?", "icon": "🩺"},
+          {"id": "fix", "label": "Act", "icon": "🛠️"}
+        ],
+        "steps": [
+          {"at": "cost", "note": "Ask what a false positive and a false negative cost the business", "ms": 0},
+          {"at": "metric", "note": "Imbalanced classes: precision, recall, PR-AUC, F-beta. Ranking: AUC, nDCG. Regression: MAE, RMSE, MAPE. Probabilities: log loss, calibration", "ms": 0},
+          {"at": "split", "note": "Split like production will see data: by time for temporal data, by user/group to avoid leakage, stratify classes", "ms": 0, "tone": "warn"},
+          {"at": "diag", "note": "High training and validation error means high bias (underfit). Low training, high validation error means high variance (overfit)", "ms": 0},
+          {"at": "fix", "note": "Bias: richer model, better features. Variance: more data, regularization, simpler model, early stopping, ensembling", "ms": 0, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Metrics, thresholds and the traps",
+        "body": "ROC-AUC measures ranking quality across thresholds (probability a random positive scores above a random negative); it can look good on highly imbalanced data. PR-AUC (average precision) focuses on the positive class and is more informative for rare events.\n\nThreshold selection: most models output scores; choose the threshold from the cost curve, not 0.5. Expected cost = FP × cost_FP + FN × cost_FN. Calibrate probabilities (Platt scaling, isotonic regression) when decisions use probability values; check calibration plots and Brier score.\n\nRegression: MAE is robust and in original units; RMSE penalizes large errors; MAPE is unstable near zero; R² compares with predicting the mean.\n\nExample: 10,000 transactions, 100 fraud. A model flags 150: 80 are fraud (TP = 80), 70 are not (FP = 70), 20 fraud missed (FN = 20). Precision = 80/150 = 0.53, recall = 80/100 = 0.80, F1 = 0.64. Accuracy = (80 + 9,830) / 10,000 = 99.1% despite mediocre precision, which is why accuracy is useless here.\n\nBias-variance: expected error = bias² + variance + irreducible noise. Learning curves (error vs training set size) show whether more data helps: if validation error is still falling and there is a gap, more data helps.\n\nValidation: k-fold cross-validation for small data; time-series split (train on past, validate on future) for temporal data; group k-fold when rows from one entity must not appear in both train and validation; keep a final untouched test set for one-time use.\n\nLeakage: features that include the label or future information (a column created after the outcome, target encoding fit on all data, normalizing with global statistics before the split, duplicate rows across splits). Symptom: suspiciously great validation scores that collapse in production.\n\nOverfitting remedies: L2 regularization (weight decay) penalizes large weights, L1 induces sparsity, dropout, early stopping on validation loss, data augmentation, feature selection, simpler models.\n\nBaselines: always compare with a trivial baseline (majority class, last value, simple linear/logistic or gradient-boosted trees). For tabular data gradient boosting (XGBoost, LightGBM) is often hard to beat."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Which metric when",
+        "head": ["Situation", "Metric", "Why"],
+        "rows": [
+          ["Balanced classes, equal costs", "Accuracy, F1", "Simple and adequate"],
+          ["Rare positives (fraud, disease)", "Precision, recall, PR-AUC", "Accuracy hides failures"],
+          ["Ranking / search", "nDCG, MRR, recall@k", "Order matters"],
+          ["Probabilities used in decisions", "Log loss, Brier, calibration", "Calibrated scores needed"],
+          ["Regression with outliers", "MAE or Huber", "Robust to large errors"],
+          ["Regression where big errors are costly", "RMSE", "Penalizes large misses"],
+          ["Forecasting", "Time-based backtests, MASE/sMAPE", "Respect temporal order"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Higher recall usually lowers precision; the threshold sets the balance.", "Complex models reduce bias but raise variance and maintenance cost."],
+    "pitfalls": ["Random splits on time series or grouped data.", "Reporting accuracy on imbalanced data.", "Tuning on the test set."],
+    "interview": ["Explain precision and recall and when to favor each.", "How do you detect data leakage?", "Diagnose high variance vs high bias."],
+    "use": ["PR-AUC and recall at a chosen precision for rare-event detection.", "Time-based validation for forecasting and anything with drift."],
+    "avoid": ["Accuracy as the headline metric for imbalanced problems.", "Complex models before a strong simple baseline."],
+    "qa": [
+      {"q": "Training accuracy 99%, validation 72%. What do you do?", "a": "That is overfitting (high variance), after first ruling out split leakage in the other direction. Add data or augmentation, regularize (weight decay, dropout, early stopping), simplify the model or features, use cross-validation, and check learning curves to see whether more data would help."},
+      {"q": "How do you choose a classification threshold?", "a": "From the cost of false positives and false negatives or a required precision or recall target: plot the precision-recall curve, pick the operating point that minimizes expected cost or meets the constraint, and recheck calibration."},
+      {"q": "Your model has 0.98 AUC offline but fails in production. Suspects?", "a": "Data leakage, a train/test split that does not mimic production (time or group), training-serving skew, distribution shift, or metrics that do not reflect the real decision threshold."}
+    ]
+  },
+  {
+    "id": "tokenization",
+    "phase": "deep-learning",
+    "group": "Foundations",
+    "title": "Tokenization and embeddings",
+    "tagline": "Models see integers, not text; the tokenizer shapes cost and failure modes.",
+    "viz": null,
+    "explain": "Tokenizers split text into subword tokens from a fixed vocabulary (32k-200k entries). Byte-pair encoding (BPE) starts from bytes or characters and repeatedly merges the most frequent adjacent pair into a new token until the vocabulary is full. Common words become single tokens; rare words split into pieces; any text is representable via bytes.\n\nTokens, not characters or words, are the unit of cost, latency and context length. In English one token is roughly 4 characters or 0.75 words; other languages, code and numbers often take more tokens per word.",
+    "flows": [
+      {
+        "title": "How BPE builds a vocabulary",
+        "hint": "Frequent pairs merge into new tokens.",
+        "nodes": [
+          {"id": "chars", "label": "Start: characters/bytes", "icon": "🔡"},
+          {"id": "count", "label": "Count pairs", "icon": "🔢"},
+          {"id": "merge", "label": "Merge top pair", "icon": "🔗"},
+          {"id": "repeat", "label": "Repeat to vocab size", "icon": "🔁"},
+          {"id": "apply", "label": "Apply merges to text", "icon": "✂️"}
+        ],
+        "steps": [
+          {"at": "chars", "note": "Corpus 'low lower lowest' starts as characters: l o w, l o w e r, l o w e s t", "ms": 0},
+          {"at": "count", "note": "Most frequent adjacent pair is (l, o) then (lo, w)", "ms": 0},
+          {"at": "merge", "note": "Merge (l,o) into 'lo', then (lo,w) into 'low': a new token is added to the vocabulary", "ms": 0},
+          {"at": "repeat", "note": "Keep merging until the vocabulary reaches the target size (for example 100k)", "ms": 0},
+          {"at": "apply", "note": "At inference, text is split into bytes and merges are applied in the learned order to produce token ids", "ms": 0, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Practical consequences and embeddings",
+        "body": "Cost and context: pricing and limits count tokens. Estimate tokens ≈ characters / 4 for English; always count with the model's tokenizer for exact numbers. Non-English text and code can use 1.5-3x more tokens for the same meaning, raising cost.\n\nOddities caused by tokenization: models struggle with character-level tasks (counting letters, reversing strings) because they see tokens; arithmetic suffers when numbers split inconsistently; leading spaces and capitalization change tokens; rare strings (IDs, hashes) become many tokens; trailing whitespace in prompts can alter generation. Glitch tokens (under-trained rare tokens) can cause odd behavior.\n\nTokenizer choices: BPE (GPT family, Llama via sentencepiece or tiktoken-style), WordPiece (BERT), Unigram (SentencePiece). Byte-level BPE guarantees no unknown tokens. Vocabulary size trades sequence length (bigger vocab means fewer tokens per text) against embedding table size (vocab × d parameters) and softmax cost.\n\nEmbeddings: an embedding layer maps each token id to a learned vector (d dimensions, 768-8192). Training places tokens used in similar contexts near each other. Sentence or document embedding models (bi-encoders) output a single vector per text, trained with contrastive learning so semantically similar texts have high cosine similarity; used for retrieval, clustering and deduplication. Choose by language coverage, dimension (storage and speed), context length and benchmark performance on retrieval tasks (MTEB) and your own data.\n\nMatryoshka embeddings let you truncate vectors (for example 1024 to 256 dims) with modest quality loss to save memory and speed. Normalize vectors so dot product equals cosine similarity. Never mix embeddings from different models in one index; changing models requires re-embedding everything.\n\nContext windows: tokens in = prompt + history + retrieved text; output tokens count too. Plan budgets: reserve space for the response; truncate or summarize history; cache stable prefixes."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Tokenizer algorithms",
+        "head": ["Algorithm", "How it learns", "Unknown tokens", "Used by"],
+        "rows": [
+          ["BPE (byte-level)", "Merge most frequent pairs", "None (falls back to bytes)", "GPT family, many LLMs"],
+          ["WordPiece", "Merge by likelihood gain", "Possible [UNK]", "BERT"],
+          ["Unigram (SentencePiece)", "Prune a large vocab by likelihood", "Rare", "T5, many multilingual models"],
+          ["Character/byte models", "No vocabulary", "None", "Research, some multilingual models"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Larger vocabularies shorten sequences (cheaper attention) but enlarge embedding and output layers.", "Higher embedding dimensions improve quality but cost memory and latency in vector search."],
+    "pitfalls": ["Estimating costs from word counts.", "Mixing embedding models in one index.", "Expecting character-level reliability from a token-level model."],
+    "interview": ["Explain BPE.", "Why do LLMs struggle to count letters?", "How do you choose an embedding model?"],
+    "use": ["Count tokens with the real tokenizer for budgets and truncation.", "Normalized embeddings with cosine similarity for retrieval."],
+    "avoid": ["Character-level logic through an LLM when code can do it.", "Reindexing embeddings casually; it is a full migration."],
+    "qa": [
+      {"q": "Why can't the model reliably count the r's in 'strawberry'?", "a": "It sees tokens like 'straw' and 'berry', not letters, so character-level facts must be inferred indirectly. Use code (a tool) for character-level operations or ask the model to spell out letters first."},
+      {"q": "You must switch embedding models. How?", "a": "Embeddings from different models are not comparable. Build a new index with the new model, evaluate retrieval on a labeled set against the old one, shift traffic gradually or via alias swap, and keep the old index for rollback."}
+    ]
+  },
+  {
+    "id": "python-concurrency",
+    "phase": "foundations",
+    "group": "Core engineering",
+    "title": "Concurrency: threads, processes and async",
+    "tagline": "Choose by whether the work waits on I/O or burns CPU.",
+    "viz": null,
+    "explain": "Concurrency structures work that overlaps in time; parallelism runs on multiple cores simultaneously. I/O-bound work (network, disk, databases, LLM API calls) spends most time waiting, so overlapping many waits gives big wins. CPU-bound work (parsing, embeddings on CPU, number crunching) needs real parallelism.\n\nPython specifics: the GIL lets one thread execute Python bytecode at a time, so threads do not speed up CPU-bound Python code, but they do overlap I/O. Processes avoid the GIL at the cost of memory and serialization. asyncio runs many tasks on one thread with cooperative scheduling; tasks yield at await points.",
+    "flows": [
+      {
+        "title": "Why async wins for many slow API calls",
+        "hint": "While one request waits, the event loop runs another.",
+        "nodes": [
+          {"id": "loop", "label": "Event loop", "icon": "🔄"},
+          {"id": "t1", "label": "Task 1 awaits API", "icon": "⏳"},
+          {"id": "t2", "label": "Task 2 awaits API", "icon": "⏳"},
+          {"id": "t3", "label": "Task 3 awaits API", "icon": "⏳"},
+          {"id": "done", "label": "Gather results", "icon": "✅"}
+        ],
+        "steps": [
+          {"at": "loop", "note": "100 LLM calls each take 2 s. Sequentially that is 200 s", "ms": 0},
+          {"at": "t1", "note": "Task 1 sends its request and awaits; control returns to the loop immediately", "ms": 1},
+          {"at": "t2", "note": "The loop starts Task 2, then 3, and so on, all waiting on the network at once", "ms": 1},
+          {"at": "t3", "note": "Use a semaphore to cap concurrency (for example 10) to respect rate limits and avoid overload", "ms": 1, "tone": "warn"},
+          {"at": "done", "note": "Total time is about 2 s per wave: 100 calls with concurrency 10 take about 20 s; add retries with backoff and per-task timeouts", "ms": 2000, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Choosing a model and avoiding classic bugs",
+        "body": "Rule of thumb: I/O-bound with many connections: asyncio (or threads for blocking libraries); CPU-bound: multiprocessing or native libraries that release the GIL (NumPy, PyTorch); mixed: processes for CPU plus async inside each; very high scale: horizontal scaling with queues and workers.\n\nThroughput math (Little's law): concurrency = throughput × latency. To sustain 50 requests/s at 400 ms per call you need about 20 concurrent in-flight requests.\n\nasyncio rules: never call blocking functions inside async code (time.sleep, requests, heavy CPU); use asyncio.sleep, aiohttp/httpx.AsyncClient, run_in_executor or to_thread for blocking work; use asyncio.gather or TaskGroup for fan-out; use Semaphore for bounded concurrency; always set timeouts (asyncio.timeout) and handle cancellation; avoid creating unbounded numbers of tasks.\n\nShared-state hazards: race conditions when two threads read-modify-write the same variable (counter += 1 is not atomic); fix with locks, queues (thread-safe handoff), or immutable data and message passing. Deadlocks come from acquiring locks in different orders; always acquire in a consistent order and use timeouts. In asyncio, shared state is safe between awaits but can be inconsistent across them.\n\nBackpressure: bound queues and concurrency so producers cannot overwhelm consumers; reject or slow down when full.\n\nIdempotency and retries: retried work may run twice; make operations idempotent. Retry with exponential backoff and jitter and a cap.\n\nProfiling first: measure with cProfile, py-spy or tracing before parallelizing; the bottleneck is often a database query or an N+1 call pattern, not Python.\n\nOther runtimes: Go goroutines and channels, Java virtual threads, Node's event loop, Rust async; the same I/O vs CPU reasoning applies."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Concurrency models in Python",
+        "head": ["Model", "Parallel CPU?", "Memory", "Best for", "Watch out"],
+        "rows": [
+          ["Threads", "No (GIL) for Python code", "Low-medium", "Blocking I/O libraries, simple overlap", "Races, locks"],
+          ["Processes", "Yes", "High (copies, pickling)", "CPU-bound work", "Serialization cost, startup"],
+          ["asyncio", "No (single thread)", "Low", "Thousands of concurrent I/O tasks", "Blocking calls stall everything"],
+          ["Workers + queue (Celery, RQ)", "Yes (many machines)", "Per worker", "Background jobs at scale", "Idempotency, retries, ops"]
+        ]
+      }
+    ],
+    "tradeoffs": ["Async gives high I/O concurrency with low memory but infects the code base with await and punishes blocking calls.", "Processes give true parallelism but cost memory and make sharing data harder."],
+    "pitfalls": ["Blocking calls inside async functions.", "Unbounded concurrency that trips rate limits.", "Assuming counter += 1 is thread-safe."],
+    "interview": ["Threads vs processes vs asyncio?", "How would you call an API 10,000 times efficiently?", "What is the GIL?"],
+    "use": ["asyncio with a semaphore for bulk LLM and API calls.", "Multiprocessing or native libraries for CPU-heavy preprocessing."],
+    "avoid": ["Threads for CPU-bound pure Python.", "Spawning a task per item with no bound.", "Premature parallelism before profiling."],
+    "qa": [
+      {"q": "You must embed 1 million documents with an API that allows 50 requests/s. Design it.", "a": "Batch inputs per request if the API supports it, run async workers with a semaphore and a token-bucket limiter sized below the quota, retry with backoff and jitter on 429/5xx, checkpoint progress so the job can resume, make writes idempotent keyed by document id, and track throughput and failures."},
+      {"q": "Why doesn't threading speed up my CPU-heavy Python loop?", "a": "The GIL allows only one thread to run Python bytecode at a time. Use multiprocessing, or move the hot loop to NumPy or another native library that releases the GIL."}
+    ]
+  }
+]

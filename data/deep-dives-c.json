@@ -1,0 +1,24 @@
+{
+  "system-design.sd-distributed": [
+    {
+      "title": "Storage engines: B-tree vs LSM-tree",
+      "body": "Every database sits on one of two write paths, and knowing which one explains most of its behavior.\n\n- B-tree (Postgres, MySQL/InnoDB): data lives in fixed-size pages arranged as a balanced tree. A write finds the page and updates it in place, backed by a write-ahead log for crash safety. Reads are cheap (a few page hops); writes cause random I/O and page splits.\n- LSM-tree (Cassandra, RocksDB, ScyllaDB): writes go to an in-memory memtable plus a sequential log, then flush to immutable sorted files (SSTables). Background compaction merges files. Writes are fast and sequential; reads may check several files, so bloom filters skip files that cannot contain the key.\n\nRule of thumb: read-heavy with range scans and transactions leans B-tree; very high write throughput, time-series and event data leans LSM. LSM trades write amplification during compaction and read amplification for ingest speed."
+    },
+    {
+      "title": "Change data capture (CDC) and the outbox",
+      "body": "Dual writes (update the DB, then publish an event) can lose one half on a crash. Two safe patterns:\n\n1. Outbox: in the same transaction as the business change, insert a row into an outbox table. A relay process reads new outbox rows and publishes them to the broker, marking them sent. Delivery is at-least-once, so consumers must be idempotent.\n2. CDC: tail the database's replication log (Debezium on Postgres WAL or MySQL binlog) and turn row changes into events. No application change needed and ordering per row is preserved.\n\nUse these to keep search indexes, caches and analytics stores in sync with the source of truth."
+    }
+  ],
+  "system-design.sd-reliability": [
+    {
+      "title": "Choosing timeouts, retries and backoff",
+      "body": "- Set a timeout on every network call; derive it from the downstream p99 plus a margin, never infinite.\n- Retry only idempotent operations, or attach an idempotency key.\n- Use exponential backoff with jitter (random delay) so clients do not retry in lockstep.\n- Cap retries per request and add a retry budget (for example, retries may not exceed 10% of traffic) to avoid retry storms.\n- Propagate a deadline down the call chain so downstream work stops when the caller has already given up.\n- Pair with a circuit breaker and bulkheads so one slow dependency cannot exhaust all your threads."
+    }
+  ],
+  "system-design.sd-data-ml-systems": [
+    {
+      "title": "Time-series and vector databases",
+      "body": "Time-series DBs (TimescaleDB, InfluxDB, Prometheus) optimize for append-heavy data keyed by time: data is partitioned by time chunks, compressed aggressively, downsampled for old data, and expired by retention policy. Queries are range scans and aggregations.\n\nVector DBs (pgvector, Qdrant, Pinecone, Milvus) store embeddings and answer nearest-neighbor queries. Exact search is O(n), so they use approximate indexes: HNSW (a layered proximity graph, fast and memory hungry) or IVF (cluster then search a few clusters, can be combined with quantization to shrink memory). You trade a little recall for large speed gains, and filtering by metadata needs care because it interacts with the index. Measure recall@k against exact search on your own data."
+    }
+  ]
+}

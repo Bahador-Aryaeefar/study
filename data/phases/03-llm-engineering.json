@@ -1,0 +1,107 @@
+{
+  "id": "llm-engineering",
+  "title": "LLM Engineering",
+  "tagline": "Using, adapting, serving and optimizing language models in real products.",
+  "level": "core",
+  "color": "#f472b6",
+  "topics": [
+    {
+      "id": "prompting",
+      "title": "Prompt and context engineering",
+      "summary": "The cheapest, fastest lever. Treat prompts as code.",
+      "items": [
+        "System vs user vs assistant roles, message formats",
+        "Zero-shot, few-shot, chain-of-thought, self-consistency",
+        "Structured prompts: XML/markdown sections, delimiters",
+        "Structured outputs: JSON mode, schema-constrained decoding, function calling",
+        "Context engineering: what to include, order, compaction, summarization",
+        "Prompt caching and cache-friendly prompt layout",
+        "Prompt versioning, templates, regression tests",
+        "Prompt injection awareness and prompt hygiene",
+        "Model-specific quirks and prompt portability"
+      ],
+      "questions": ["How do you make an LLM return reliably valid JSON?", "How would you structure a prompt to maximize cache hits?", "When does few-shot hurt?"],
+      "resources": ["Anthropic prompt engineering docs", "OpenAI prompt guide", "Anthropic: Effective context engineering for agents"]
+    },
+    {
+      "id": "apis-sdks",
+      "title": "Provider APIs and SDKs",
+      "summary": "Be fluent with at least two providers and one open-source runtime.",
+      "items": [
+        "Anthropic, OpenAI, Google Gemini APIs: messages, tools, streaming",
+        "Streaming (SSE) handling, partial tool-call parsing",
+        "Rate limits, retries, backoff with jitter, fallbacks across providers",
+        "Token counting, cost tracking, budgets per user/feature",
+        "Batch APIs and async workloads",
+        "Multimodal inputs: images, PDFs, audio",
+        "Model routing: cheap model first, escalate on difficulty",
+        "Gateways: LiteLLM, OpenRouter, custom proxy"
+      ],
+      "questions": ["Design a model router that cuts cost without hurting quality.", "How do you handle provider outages?"],
+      "resources": ["Provider API docs", "LiteLLM docs"]
+    },
+    {
+      "id": "finetuning",
+      "title": "Fine-tuning in practice",
+      "summary": "Know when NOT to fine-tune, and how to do it well when you must.",
+      "items": [
+        "Decision framework: prompting vs RAG vs fine-tuning",
+        "Dataset curation: quality over quantity, formatting, chat templates",
+        "LoRA / QLoRA hyperparameters (rank, alpha, target modules)",
+        "Full fine-tuning vs PEFT memory math",
+        "Tooling: Hugging Face Transformers, TRL, PEFT, Axolotl, Unsloth",
+        "Evaluating a fine-tune: held-out set, regression on general ability, catastrophic forgetting",
+        "Preference tuning on your own data",
+        "Fine-tuning hosted models (provider APIs)",
+        "Merging adapters, serving multiple LoRAs"
+      ],
+      "questions": ["A stakeholder asks to fine-tune for 'company knowledge'. What do you say?", "How do you detect catastrophic forgetting?"],
+      "resources": ["HF LLM course", "Unsloth docs", "LoRA and QLoRA papers"]
+    },
+    {
+      "id": "inference",
+      "title": "Inference and serving",
+      "summary": "Latency, throughput and cost. A senior-level differentiator.",
+      "items": [
+        "Latency metrics: TTFT, inter-token latency, throughput, p50/p99",
+        "Continuous batching and PagedAttention (vLLM)",
+        "Serving engines: vLLM, SGLang, TensorRT-LLM, TGI, llama.cpp, Ollama",
+        "Quantization: INT8, INT4, GPTQ, AWQ, GGUF, FP8; accuracy trade-offs",
+        "Speculative decoding, Medusa, EAGLE",
+        "Prefix caching and KV cache offloading",
+        "Tensor parallel serving across GPUs",
+        "Autoscaling GPU workloads, cold starts, model loading time",
+        "Disaggregated prefill/decode serving",
+        "Cost modeling: $/1M tokens, GPU utilization, reserved vs spot",
+        "On-device and edge inference"
+      ],
+      "questions": [
+        "Estimate GPUs needed to serve 100 req/s of a 70B model with 1k-token prompts.",
+        "Why does continuous batching beat static batching?",
+        "What does speculative decoding guarantee about output quality?"
+      ],
+      "resources": ["vLLM paper and docs", "Efficient LLM inference surveys", "Baseten / Modal / Together engineering blogs"],
+      "concepts": [
+        {
+          "title": "Back-of-envelope serving capacity",
+          "body": "Weights: 70B params at fp16 = 140 GB, so at least 2x80GB GPUs with tensor parallelism, usually 4 for KV headroom. Decode speed per user is roughly memory_bandwidth / bytes_read_per_token. On a 3.35 TB/s H100 pair with 140 GB weights, a single stream tops out near 3350 / 70 = ~48 tok/s per GPU of weights shard. Batching amortizes the weight reads across many sequences, which is why throughput scales with batch size until KV cache memory or compute saturates."
+        }
+      ]
+    },
+    {
+      "id": "multimodal",
+      "title": "Multimodal and specialized models",
+      "summary": "Vision, speech and code models appear in many agent products.",
+      "items": [
+        "Vision-language models: ViT, CLIP, image tokens",
+        "Document understanding: OCR vs VLM, layout parsing",
+        "Speech: Whisper-style ASR, TTS, real-time voice pipelines",
+        "Realtime / voice agents: VAD, barge-in, latency budgets",
+        "Image and video generation basics (diffusion, flow matching)",
+        "Code models and code-specific evals"
+      ],
+      "questions": ["Design a real-time voice agent. What is your latency budget per stage?"],
+      "resources": ["Whisper paper", "LiveKit / Pipecat docs"]
+    }
+  ]
+}

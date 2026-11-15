@@ -1,0 +1,90 @@
+{
+  "foundations.python": [
+    {
+      "title": "asyncio pitfalls that bite in production",
+      "body": "The event loop is single-threaded, so one blocking call stalls every request.\n\n- Blocking calls (requests, time.sleep, CPU-heavy parsing, sync DB drivers) inside async code freeze the loop. Use async clients or asyncio.to_thread / a process pool.\n- asyncio.create_task returns a task the loop holds only a weak reference to. Keep a reference or it can be garbage collected mid-run.\n- Use asyncio.TaskGroup (3.11+) for structured concurrency: if one child fails, siblings are cancelled and errors are grouped.\n- Cancellation is an exception (CancelledError). Never swallow it; clean up in finally.\n- Always bound concurrency with a Semaphore, otherwise 10k tasks hit a provider at once and you get rate limited.\n- Always set timeouts (asyncio.timeout) around network calls.\n\n```python\nasync def fetch_all(urls):\n    sem = asyncio.Semaphore(20)\n    async def one(u):\n        async with sem, asyncio.timeout(10):\n            return await client.get(u)\n    async with asyncio.TaskGroup() as tg:\n        tasks = [tg.create_task(one(u)) for u in urls]\n    return [t.result() for t in tasks]\n```"
+    }
+  ],
+  "foundations.networking": [
+    {
+      "title": "What happens when you call an LLM API with streaming",
+      "body": "1. DNS resolves the host (cached by TTL). 2. TCP three-way handshake (1 RTT). 3. TLS 1.3 handshake (1 RTT; 0 with resumption). 4. HTTP/2 request on a multiplexed connection. 5. Server holds the response open with Content-Type text/event-stream and flushes small data: frames as tokens are produced.\n\nWhy this matters:\n\n- Connection reuse (keep-alive / HTTP/2 pooling) removes up to 2 RTT per call. Create one client and reuse it.\n- Any proxy or CDN that buffers the response destroys streaming UX. Disable buffering (X-Accel-Buffering: no on nginx) and avoid gzip on event streams.\n- Idle timeouts on load balancers (often 60 s) kill long generations. Send periodic comment frames (: ping) or raise the timeout.\n- SSE is one-way, works through plain HTTP infrastructure, auto-reconnects with Last-Event-ID. WebSockets are needed only for bidirectional realtime (voice, collaborative cursors)."
+    }
+  ],
+  "deep-learning.transformers": [
+    {
+      "title": "Attention step by step with shapes",
+      "body": "Input x: [B, T, D]. Project to Q, K, V with weights [D, D] then reshape to heads: [B, H, T, d] where d = D / H.\n\n- scores = Q @ K^T / sqrt(d) -> [B, H, T, T]\n- apply causal mask: set positions j > i to -inf\n- weights = softmax(scores, dim=-1)\n- out = weights @ V -> [B, H, T, d], merge heads -> [B, T, D], final projection.\n\nWhy sqrt(d): dot products of d-dimensional random vectors have variance d. Without scaling, softmax saturates, gradients vanish.\n\nCost: the T x T score matrix makes compute and memory O(T^2). FlashAttention never materializes it: it tiles Q, K, V into SRAM blocks and keeps a running softmax (online softmax), so it is exact but far less memory traffic.\n\n```python\ndef attn(q, k, v):          # q,k,v: [B,H,T,d]\n    s = q @ k.transpose(-2, -1) / q.size(-1) ** 0.5\n    mask = torch.triu(torch.ones(s.size(-2), s.size(-1), dtype=torch.bool, device=s.device), 1)\n    s = s.masked_fill(mask, float('-inf'))\n    return torch.softmax(s, -1) @ v\n```"
+    },
+    {
+      "title": "RoPE, GQA, MoE in plain language",
+      "body": "RoPE (rotary position embedding) rotates each pair of Q/K dimensions by an angle proportional to token position. The dot product Q_i . K_j then depends only on the relative offset i-j, giving relative position awareness with no learned table, and it extrapolates better with scaling tricks (YaRN, NTK scaling).\n\nGQA (grouped-query attention): many query heads share a smaller number of K/V heads. KV cache shrinks by the group factor (for example 8x) with small quality loss, which is why almost every serving-oriented model uses it.\n\nMoE (mixture of experts): replace the dense FFN with E expert FFNs and a router that sends each token to the top-k experts (often k=2). Parameters grow by E, compute per token grows by k. Challenges: load balancing (auxiliary loss), expert parallelism communication (all-to-all), and memory (all experts must be resident even though few are active)."
+    }
+  ],
+  "deep-learning.pretraining": [
+    {
+      "title": "Training memory math and the parallelism cheat sheet",
+      "body": "Mixed-precision Adam memory per parameter: 2 bytes bf16 weights + 2 bytes bf16 grads + 4 bytes fp32 master weights + 4 + 4 bytes Adam moments = 16 bytes per parameter, before activations. A 7B model needs about 112 GB of state, which is why one 80 GB GPU cannot full-fine-tune it without sharding.\n\n- Data parallel (DDP): replicate the model, split batches, all-reduce gradients. Simple; limited by per-GPU memory.\n- FSDP / ZeRO-3: shard weights, grads and optimizer states across GPUs; gather layers just in time. Biggest memory win for moderate scale.\n- Tensor parallel: split matmuls across GPUs inside a layer. Needs very fast interconnect (NVLink), so keep it inside a node.\n- Pipeline parallel: split layers into stages; micro-batching hides bubbles.\n- Sequence/context parallel: split the sequence for very long contexts. Expert parallel: place experts on different GPUs.\n\nRule of thumb: FSDP first; add tensor parallel within a node when layers are huge; add pipeline across nodes; always measure MFU (achieved FLOPs / peak FLOPs). 40-55% MFU is excellent."
+    }
+  ],
+  "deep-learning.post-training": [
+    {
+      "title": "From base model to assistant to reasoner",
+      "body": "1. SFT: train on (prompt, ideal response) pairs. Teaches format and behavior. Cheap, high leverage; quality of data dominates.\n\n2. Preference optimization: learn from comparisons. RLHF trains a reward model on human rankings, then optimizes the policy with PPO plus a KL penalty to stay close to the SFT model. DPO skips the reward model and optimizes a closed-form objective directly on preference pairs: simpler and more stable, often slightly less flexible.\n\n3. RL with verifiable rewards (RLVR): for math, code and tasks with checkable answers, reward correctness directly. GRPO samples a group of responses per prompt and uses the group's mean/std as the baseline, removing the value network. This is the recipe behind modern reasoning models: the model learns to produce long chains of thought that improve verifiable outcomes.\n\nFailure modes to name in interviews: reward hacking (exploiting the reward model or verifier), sycophancy (optimizing for agreement), length bias, mode collapse, and capability regressions (alignment tax)."
+    }
+  ],
+  "llm-engineering.prompting": [
+    {
+      "title": "Prompt layout for caching and reliability",
+      "body": "Prompt caching reuses the computed KV state for an identical prefix. Anything that changes breaks the cache from that point on, so order content from most stable to least stable:\n\n1. Tool definitions and system instructions (static)\n2. Reference documents / few-shot examples (static per tenant)\n3. Conversation history (append-only)\n4. The new user message (dynamic)\n\nRules: never put timestamps, request IDs or random ordering near the top; keep tool lists stable and sorted; append instead of rewriting history. Cache hits are priced far below fresh input tokens and cut TTFT, so for agents with long histories this is the single biggest cost lever.\n\nStructured output reliability ladder (weakest to strongest): ask nicely for JSON -> provide a schema in the prompt -> JSON mode -> tool/function call with a schema -> schema-constrained decoding. Always validate (Pydantic) and retry once with the validation error appended."
+    }
+  ],
+  "llm-engineering.finetuning": [
+    {
+      "title": "Should we fine-tune? A decision tree",
+      "body": "- Missing knowledge or facts that change -> RAG, not fine-tuning. Fine-tuning teaches style and behavior, not reliable recall.\n- Wrong format/tone/policy -> better prompt, few-shot examples, structured outputs first.\n- Prompt works but is too long/expensive/slow at scale -> fine-tune a smaller model to replicate the large model (distillation).\n- Need a narrow, high-volume, latency-critical classifier/extractor -> fine-tune a small model.\n- Need new capability the base lacks (domain language, tool protocol) and you have thousands of high-quality examples -> fine-tune.\n\nLoRA memory: you freeze W (d x k) and train A (d x r) and B (r x k). Trainable params go from d*k to r*(d+k). For r=16 on a 4096x4096 layer that is 131k vs 16.7M, about 0.8%. QLoRA also quantizes the frozen base to 4 bit, letting a 7B model fine-tune in roughly 10 GB of VRAM.\n\nAlways keep a held-out eval, compare against the best prompt baseline, and run a general-capability regression to catch forgetting."
+    }
+  ],
+  "llm-engineering.inference": [
+    {
+      "title": "How modern inference engines get throughput",
+      "body": "Continuous batching: instead of waiting for a whole batch to finish, the scheduler adds new requests and removes finished ones at every decode step, keeping the GPU full. Static batching wastes capacity because the batch runs as long as its longest sequence.\n\nPagedAttention: KV cache is stored in fixed-size blocks mapped through a page table, like virtual memory. It eliminates fragmentation (previous systems wasted 60-80% of KV memory) and enables sharing blocks across requests with a common prefix.\n\nQuantization: weights in INT8/INT4/FP8 cut memory and bandwidth, speeding memory-bound decode. Weight-only INT4 (AWQ, GPTQ) is the common serving choice; FP8 is attractive on modern GPUs. Measure on your own evals; long-context and reasoning quality degrade first.\n\nSpeculative decoding: a small draft model proposes k tokens, the large model verifies them in one forward pass and accepts the matching prefix. Output distribution is mathematically identical; speedup depends on acceptance rate (2-3x is typical for predictable text).\n\nChunked prefill and disaggregation separate compute-bound prefill from memory-bound decode so long prompts do not stall other users' token streaming."
+    }
+  ],
+  "rag.ingestion": [
+    {
+      "title": "Chunking: practical guidance",
+      "body": "Start simple, measure, then add complexity.\n\n- Baseline: recursive splitting by headings, paragraphs and sentences, 300-800 tokens, 10-15% overlap.\n- Keep structure: carry the document title and heading path with every chunk (as metadata and prepended text). A chunk saying 'It increases by 5%' is useless without its section.\n- Tables and code: keep whole tables/functions together; convert tables to markdown/JSON; consider describing tables with an LLM.\n- Parent-child: embed small chunks for precise matching, but return the larger parent section to the LLM.\n- Contextual retrieval: have an LLM write a one-sentence context for each chunk ('This is from the 2023 ACME 10-K, revenue section') and embed that with the chunk; reported to cut retrieval failures substantially.\n- Index metadata needed for filters and ACLs: tenant, source, doc id, timestamp, permissions.\n\nDecide with data: compare chunk sizes on your golden set with recall@k."
+    }
+  ],
+  "rag.retrieval-quality": [
+    {
+      "title": "Debugging a bad RAG answer: decision tree",
+      "body": "1. Is the right passage in the corpus at all? If no, it is an ingestion/coverage problem.\n2. Is it in the top-50 of retrieval? If no, retrieval problem: try hybrid search, better chunking, query rewriting, a better embedding model.\n3. Is it in the top-50 but not top-8 after rerank? Reranker/fusion problem: add or tune a cross-encoder, adjust k.\n4. Is it in the context but the answer is still wrong? Generation problem: ordering (lost in the middle), conflicting passages, prompt instructions, model too weak, or need citations/verification.\n5. Is the question multi-hop or needs aggregation? Use decomposition or agentic retrieval; plain RAG cannot answer 'compare all contracts'.\n\nLog the retrieved ids and scores for every request so you can run this tree on real failures.\n\nHNSW knobs: M (graph degree; memory and recall up), efConstruction (build quality), efSearch (query-time recall vs latency). Raise efSearch first when recall is low."
+    }
+  ],
+  "agents.agent-fundamentals": [
+    {
+      "title": "The five workflow patterns (and when to graduate to an agent)",
+      "body": "- Prompt chaining: fixed sequence of LLM calls with checks between steps. Use when a task decomposes cleanly (draft, critique, rewrite).\n- Routing: classify the input, send it to a specialized prompt/model/tool. Use for heterogeneous queries or to route cheap vs expensive models.\n- Parallelization: run independent subtasks at once (sectioning) or the same task multiple times (voting) for speed or confidence.\n- Orchestrator-workers: a lead model dynamically splits the task and delegates; use when subtasks are not known in advance (coding across files, research).\n- Evaluator-optimizer: generate, then critique against criteria, loop. Use when you have clear criteria and iteration measurably helps.\n\nAn agent is the open-ended case: the model chooses tools and steps in a loop until done. Only graduate when the path cannot be predetermined and you can tolerate higher cost, latency and variance, and you have evals to prove it beats the workflow.\n\nReliability math: per-step success p over n steps is p^n. 0.95^20 = 0.36. Fixes: fewer steps, verify after risky steps, checkpoints with retry from last good state, narrower tools, human approval on irreversible actions."
+    }
+  ],
+  "agents.tools-design": [
+    {
+      "title": "Tool design checklist with a before/after",
+      "body": "Treat tool descriptions as a prompt for a new teammate. Good tools:\n\n- Have a clear name and one job; avoid overlapping tools.\n- Describe when to use it AND when not to, with parameter formats and an example.\n- Return concise, relevant, human-readable results (names not UUIDs where possible), with pagination/truncation and a hint for what to do next.\n- Return helpful errors: say what was wrong and how to fix it, not a stack trace.\n- Are safe to retry (idempotent) or clearly flagged as destructive and gated.\n- Consolidate workflows: one schedule_event tool beats list_users + list_events + create_event if the model usually chains them.\n\nBefore: search(q) -> returns 200 raw JSON rows.\nAfter: search_tickets(query, status, limit=10) -> 'T-1042 | Login fails on SSO | open | 2d ago' x10, plus 'showing 10 of 87, refine the query or pass offset'.\n\nMCP gives a standard way to expose tools/resources/prompts: an MCP host (the app) runs MCP clients that connect to MCP servers over stdio (local) or streamable HTTP (remote), with OAuth for remote auth. Vet servers like you vet dependencies: tool descriptions are untrusted text that enters your model's context."
+    }
+  ],
+  "agents.memory-state": [
+    {
+      "title": "Context management for long-running agents",
+      "body": "Context is a finite, degrading resource: more tokens can mean worse focus (context rot). Techniques, from cheapest to most involved:\n\n- Trim tool results at the source (return only what the model needs).\n- Clear stale tool results/old turns once their information has been used.\n- Compaction: when near the limit, ask the model to summarize the trajectory (decisions, open issues, file paths) and restart with the summary plus recent turns.\n- Structured note-taking: the agent writes a NOTES.md / todo file outside the context and re-reads it as needed; survives resets.\n- Sub-agents: delegate a deep search to a fresh context and receive back a 1-2k token digest, keeping the main context clean.\n- Just-in-time retrieval: keep references (paths, URLs, IDs) and load content only when needed instead of pre-loading everything.\n\nLong-term memory writes need a policy: what is worth remembering, who can write, how to expire or correct it, and defenses against memory poisoning (an injected 'fact' persisting across sessions)."
+    }
+  ],
+  "agents.agent-reliability": [
+    {
+      "title": "Guardrail layers and budgets",
+      "body": "Defense in depth, from the model outward:\n\n1. Specification: clear task, success criteria, stop conditions in the prompt.\n2. Tool layer: schemas, argument validation, allow-lists, idempotency keys, dry-run for destructive tools.\n3. Policy layer (deterministic code): permissions, spend caps, rate limits, approval gates.\n4. Runtime budgets: max steps, max tokens, wall-clock timeout, max repeated identical tool calls (loop detector).\n5. Verification: a checker (tests, schema, a second model) before commit/side effects.\n6. Observability: full trace, alerts on anomalous step counts or spend.\n\nLoop detection: hash (tool, normalized args); if it repeats 3 times, inject a message ('you already tried this, try a different approach') then abort on the next repeat.\n\nFailure taxonomy for postmortems: bad specification, bad planning, wrong tool or arguments, ignored tool error, context loss, inter-agent misalignment, premature termination, verification gap."
+    }
+  ]
+}

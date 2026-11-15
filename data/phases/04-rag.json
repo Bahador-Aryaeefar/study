@@ -1,0 +1,92 @@
+{
+  "id": "rag",
+  "title": "Retrieval and RAG",
+  "tagline": "Give models the right knowledge at the right time, and prove it works.",
+  "level": "core",
+  "color": "#34d399",
+  "topics": [
+    {
+      "id": "ingestion",
+      "title": "Ingestion and chunking",
+      "summary": "Retrieval quality is capped by ingestion quality.",
+      "items": [
+        "Document parsing: PDF, HTML, DOCX, tables, scanned docs",
+        "Chunking strategies: fixed, recursive, semantic, structure-aware, parent-child",
+        "Metadata design: source, section, ACLs, timestamps",
+        "Contextual retrieval: prepend chunk context before embedding",
+        "Incremental indexing, deletes, re-embedding on model change",
+        "Deduplication and near-duplicate handling",
+        "Multi-tenant data isolation and permission-aware retrieval"
+      ],
+      "questions": ["How do you chunk a 300-page contract PDF with tables?", "How do you enforce document-level permissions in RAG?"],
+      "resources": ["Anthropic: Contextual Retrieval", "Unstructured / Docling docs", "LlamaIndex docs"]
+    },
+    {
+      "id": "vector-search",
+      "title": "Vector search and databases",
+      "summary": "The index layer. Know the algorithms, not just the product names.",
+      "items": [
+        "Exact vs approximate nearest neighbor",
+        "HNSW, IVF-Flat, IVF-PQ, DiskANN: build cost, recall, memory",
+        "Distance metrics and normalization",
+        "Quantization of vectors, binary embeddings, Matryoshka truncation",
+        "Filtering with ANN: pre-filter vs post-filter pitfalls",
+        "Products: pgvector, Qdrant, Weaviate, Milvus, Pinecone, Elasticsearch/OpenSearch, FAISS, LanceDB",
+        "Sharding and replication of vector indexes",
+        "Choosing: pgvector vs dedicated vector DB"
+      ],
+      "questions": ["Compare HNSW and IVF-PQ for 1B vectors.", "Why does filtered ANN search lose recall and how do you fix it?"],
+      "resources": ["HNSW paper", "FAISS wiki", "ANN-Benchmarks"]
+    },
+    {
+      "id": "retrieval-quality",
+      "title": "Advanced retrieval",
+      "summary": "Where RAG systems are won or lost.",
+      "items": [
+        "BM25 / sparse retrieval and why it still matters",
+        "Hybrid search with reciprocal rank fusion",
+        "Cross-encoder rerankers and late interaction (ColBERT)",
+        "Query rewriting, expansion, HyDE, multi-query, decomposition",
+        "Routing queries to different indexes or tools",
+        "GraphRAG and knowledge graphs",
+        "Agentic RAG: model decides when and what to retrieve",
+        "Multimodal retrieval (images, tables, slides)",
+        "Long-context vs RAG: when to just stuff the context",
+        "Embedding model fine-tuning on domain pairs"
+      ],
+      "questions": ["Your RAG answers are wrong. How do you tell whether retrieval or generation is at fault?", "Why add a reranker and what does it cost in latency?", "RAG vs long context: how do you decide?"],
+      "resources": ["Pinecone / Weaviate learning centers", "ColBERT papers", "Microsoft GraphRAG"]
+    },
+    {
+      "id": "rag-generation",
+      "title": "Generation and grounding",
+      "summary": "Turn retrieved context into trustworthy answers.",
+      "items": [
+        "Context packing, ordering, lost-in-the-middle",
+        "Citations and attribution",
+        "Abstaining when evidence is missing",
+        "Handling conflicting sources and stale data",
+        "Answer verification and self-check loops",
+        "Caching: semantic cache, exact cache, risks",
+        "Conversation memory in RAG chats"
+      ],
+      "questions": ["How do you make an assistant say 'I don't know' reliably?", "When is a semantic cache dangerous?"],
+      "resources": ["RAGAS docs", "Lost in the Middle paper"]
+    },
+    {
+      "id": "rag-eval",
+      "title": "RAG evaluation",
+      "summary": "Measure retrieval and generation separately.",
+      "items": [
+        "Retrieval metrics: recall@k, precision@k, MRR, nDCG",
+        "Generation metrics: faithfulness, answer relevance, completeness",
+        "Building a golden dataset from real queries",
+        "Synthetic question generation and its biases",
+        "LLM-as-judge for RAG, human spot-checks",
+        "Online signals: thumbs, edits, follow-up rate"
+      ],
+      "questions": ["How would you build an eval set for a brand new RAG product with no users yet?"],
+      "resources": ["RAGAS", "TruLens", "Hamel Husain: evals"]
+    }
+  ]
+}

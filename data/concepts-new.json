@@ -1,0 +1,238 @@
+[
+  {
+    "id": "sharding",
+    "phase": "system-design",
+    "group": "Data & storage",
+    "title": "Sharding and partitioning",
+    "tagline": "Splitting one dataset across machines, and living with the consequences.",
+    "viz": null,
+    "explain": "Partitioning splits data so no single node holds or serves everything.\n\nStrategies:\n\n- Range: contiguous key ranges per shard. Great for range scans; prone to hotspots (for example monotonically increasing ids or timestamps all hit the last shard).\n- Hash: hash(key) decides the shard. Even spread; range queries must hit all shards.\n- Directory/lookup: a service maps key to shard. Flexible (move one tenant), but the directory is a critical dependency.\n- Consistent hashing or many virtual shards: lets you add nodes by moving small pieces.\n\nWhat gets harder: cross-shard joins and transactions, global secondary indexes, uniqueness constraints, rebalancing under load, and hot keys.\n\nResharding online: create many more logical shards than machines at the start, move logical shards between machines, dual-write or use CDC while copying, verify, then cut over reads and writes.\n\nPick the shard key from the dominant query so most requests touch one shard.",
+    "tradeoffs": ["Hash sharding balances load but kills range scans; range sharding enables scans but risks hotspots.", "More shards mean more parallelism but more cross-shard coordination and operational overhead."],
+    "pitfalls": ["Choosing a shard key that causes hotspots (timestamp, country).", "Sharding too early before simpler options are exhausted.", "No plan for resharding; discovering it during an incident."],
+    "interview": ["How would you shard a 20 TB users table?", "How do you run a query that needs data from all shards?", "What happens to uniqueness constraints?"],
+    "use": ["A dataset or write rate that cannot fit one node even after indexing, caching, replicas and vertical scaling.", "Multi-tenant systems where tenants are isolated per shard.", "When queries are dominated by one key (user, tenant, order) so most requests hit one shard."],
+    "avoid": ["Datasets that fit one machine with replicas; sharding multiplies operational complexity.", "Workloads dominated by cross-entity joins and transactions.", "Shard keys with skewed or growing hot values."],
+    "qa": [
+      {"q": "How do you reshard with no downtime?", "a": "Start with many logical shards mapped to few machines. To grow, copy a logical shard to the new machine while streaming changes (CDC or dual write), verify counts and checksums, switch routing for that shard atomically, then delete the old copy. Do it shard by shard with throttling and a rollback path."},
+      {"q": "How do secondary indexes work across shards?", "a": "Local indexes live with each shard's data: cheap to maintain, but queries by the secondary key must scatter to all shards. Global indexes are partitioned by the indexed value: reads are targeted, but writes touch two shards and the index is usually updated asynchronously, so it may lag."},
+      {"q": "A shard is hot. What do you do?", "a": "Find whether it is a hot key or a hot range. Split the shard, add salt to a hot key (suffix 0..N) and merge on read, cache the hot data, or isolate the heavy tenant on its own shard."}
+    ]
+  },
+  {
+    "id": "sql-vs-nosql",
+    "phase": "system-design",
+    "group": "Data & storage",
+    "title": "Choosing a database",
+    "tagline": "Access patterns and consistency needs choose the store, not hype.",
+    "viz": null,
+    "explain": "Ask in this order: what are the queries, what consistency do I need, how big and how fast will it grow, what is the team able to operate.\n\nFamilies:\n\n- Relational (Postgres, MySQL): transactions, joins, constraints, flexible queries. Scales far on one node plus replicas.\n- Key-value (Redis, DynamoDB): single-key reads and writes at very low latency and high scale; limited queries.\n- Document (MongoDB): aggregates stored as nested documents; flexible schema.\n- Wide-column (Cassandra, ScyllaDB, Bigtable): huge write throughput, queries designed per table, tunable consistency.\n- Search (Elasticsearch, OpenSearch): inverted indexes, relevance, faceting. A secondary store, not the source of truth.\n- Graph (Neo4j): relationship traversals.\n- Time-series and columnar OLAP (Timescale, ClickHouse, BigQuery): append-heavy metrics and analytical scans.\n- Vector (pgvector, Qdrant, Pinecone): nearest-neighbor search over embeddings.\n\nMost real systems are polyglot: one source of truth plus derived stores (cache, search index, warehouse) kept in sync by events or CDC.",
+    "tradeoffs": ["Relational flexibility vs the horizontal write scale of partitioned stores.", "One database is simple to operate; many specialized stores each cost operations and consistency work."],
+    "pitfalls": ["Choosing NoSQL for scale you do not have, then needing joins and transactions.", "Using a search index or cache as the source of truth.", "Ignoring operational cost: backups, upgrades, on-call expertise."],
+    "interview": ["Which database for this design, and why not the others?", "When would you add a second database?", "How do you keep a search index in sync?"],
+    "use": ["Relational by default for business data with relationships and transactions.", "Key-value or wide-column when access is by key and write volume exceeds a single node.", "Specialized stores (search, vector, time-series, OLAP) when their query model is the requirement."],
+    "avoid": ["Document stores for heavily relational data.", "A different database per microservice without a reason beyond fashion.", "Distributed databases when a single replicated Postgres fits the requirements."],
+    "qa": [
+      {"q": "Justify Postgres for a new product.", "a": "ACID transactions, rich queries, mature tooling, JSON columns for flexibility, extensions (pgvector, PostGIS), and one node with replicas handles tens of thousands of QPS. I would shard or add specialized stores only when a measured limit appears, and I would keep a path to do so by choosing sensible keys and avoiding cross-entity coupling."},
+      {"q": "Why Cassandra for a messaging store?", "a": "Write-heavy, append-mostly, known access pattern (messages by conversation, ordered by time), needs horizontal scale and multi-region availability. Partition by conversation id, cluster by time. I accept limited ad-hoc queries and eventual consistency, and design tables per query."}
+    ]
+  },
+  {
+    "id": "storage-engines",
+    "phase": "system-design",
+    "group": "Data & storage",
+    "title": "Storage engines: B-tree vs LSM-tree",
+    "tagline": "How a database lays bytes on disk decides its strengths.",
+    "viz": null,
+    "explain": "B-tree (Postgres, MySQL InnoDB): data lives in fixed-size pages arranged as a balanced tree. A write finds the page and updates it in place, protected by a write-ahead log (WAL). Reads touch a few pages. Random writes and page splits cost I/O.\n\nLSM-tree (Cassandra, RocksDB, ScyllaDB, LevelDB): writes go to an in-memory memtable plus a sequential log, then flush as immutable sorted files (SSTables). Background compaction merges files and drops overwritten or deleted data. Reads may check several files, so Bloom filters skip files that cannot hold the key.\n\nAmplification: B-trees have write amplification from page rewrites and WAL; LSMs have write amplification from compaction and read amplification from multiple files. Compaction style (size-tiered vs leveled) tunes the balance between write cost, read cost and space.\n\nColumnar storage (Parquet, ClickHouse) stores each column together: excellent compression and scans for analytics, poor for single-row updates.",
+    "tradeoffs": ["LSM gives fast ingest at the cost of compaction work and slower or less predictable reads.", "B-tree gives predictable reads and in-place updates at the cost of random write I/O."],
+    "pitfalls": ["Compaction falling behind and causing read latency spikes or disk exhaustion.", "Using a row store for large analytical scans.", "Ignoring delete tombstones in LSM stores, which accumulate and slow reads."],
+    "interview": ["Why are LSM-trees good for writes?", "What is write amplification?", "When would you pick a columnar store?"],
+    "use": ["B-tree engines for general OLTP with mixed reads, range scans and updates.", "LSM engines for very high write throughput: event logs, time-series, messaging, metrics.", "Columnar engines for analytics and aggregations over many rows."],
+    "avoid": ["LSM stores for read-heavy workloads with many random point reads and updates unless caches absorb them.", "B-tree stores as a firehose sink for hundreds of thousands of writes per second without batching.", "Columnar stores for transactional row-by-row updates."],
+    "qa": [
+      {"q": "Why do LSM reads need Bloom filters?", "a": "A key could be in any of several SSTables. Checking each means a disk read. A Bloom filter per file answers 'definitely not here' from memory, so most files are skipped and only likely candidates are read."},
+      {"q": "What is the role of the WAL?", "a": "It records changes sequentially before applying them to the main structure, so after a crash the database replays the log to restore committed changes. Sequential appends are fast and durable once fsynced."},
+      {"q": "Pick a store for 500k events per second of metrics.", "a": "An LSM or time-series engine (ClickHouse, Timescale, or Kafka into a columnar store) with batched inserts, time partitioning, compression, downsampling and retention. I would put Kafka in front to absorb bursts and make the sink replayable."}
+    ]
+  },
+  {
+    "id": "cdn",
+    "phase": "system-design",
+    "group": "Scaling patterns",
+    "title": "CDN and edge caching",
+    "tagline": "Move bytes close to users and keep traffic off your origin.",
+    "viz": null,
+    "explain": "A CDN is a network of edge caches near users. A request hits the nearest edge; on a hit it is served immediately, on a miss the edge fetches from the origin (or a mid-tier shield) and caches it.\n\nPull CDN: edges fetch on demand; simple, first request is slow. Push CDN: you upload content ahead; good for big, predictable assets.\n\nKey concepts: cache key (URL plus selected headers or query params), Cache-Control and TTL, versioned/immutable asset URLs (app.3f2a.js) so you never need to purge, purge APIs for urgent invalidation, stale-while-revalidate, origin shield to collapse misses, signed URLs for private content, and edge compute for light logic.\n\nDynamic content can still benefit: terminate TLS at the edge, reuse warm connections to the origin, cache short-lived API responses.",
+    "tradeoffs": ["Long TTLs maximize hit rate but delay updates; versioned URLs give both.", "Edge logic reduces latency but is harder to debug and consistent-ize."],
+    "pitfalls": ["Cache keys that include cookies or random params, destroying the hit rate.", "Caching personalized or private responses publicly.", "Relying on purge for correctness instead of versioned URLs."],
+    "interview": ["How do you serve video globally?", "How do you invalidate content?", "What belongs in the cache key?"],
+    "use": ["Static assets, images, video segments, downloads.", "Public, cacheable API responses and pages with short TTLs.", "Absorbing traffic spikes and DDoS at the edge."],
+    "avoid": ["Highly personalized, per-user responses without careful cache-key and Vary design.", "Content that must be instantly consistent everywhere.", "A CDN as a substitute for fixing a slow origin."],
+    "qa": [
+      {"q": "How do you roll out a new JS bundle without stale users?", "a": "Content-hash the filename and serve it with a long immutable max-age. The HTML (short TTL or no-cache) references the new hash, so users pick up the new bundle on the next page load while old bundles stay cached for older pages."},
+      {"q": "Origin gets hammered when a popular object expires. Why, and how do you fix it?", "a": "Every edge misses at once. Use an origin shield tier so misses collapse into one request, request coalescing, stale-while-revalidate, and staggered TTLs."}
+    ]
+  },
+  {
+    "id": "search",
+    "phase": "system-design",
+    "group": "Data & storage",
+    "title": "Search and typeahead",
+    "tagline": "Inverted indexes turn 'find documents containing words' into fast lookups.",
+    "viz": null,
+    "explain": "An inverted index maps each term to the list of documents containing it (a postings list). A query looks up terms and intersects or unions the lists, then ranks results.\n\nPipeline: tokenize, lowercase, remove stop words, stem or lemmatize, index. Ranking: TF-IDF and BM25 (term frequency, rarity, length normalization), plus signals like recency, popularity and personalization. Modern systems add vector search and rerank with a learned model (hybrid retrieval).\n\nScaling: shard the index by document, query all shards in parallel and merge the top results (scatter-gather), replicate shards for availability and read throughput. Updates are near-real-time via segment refreshes, and old segments are merged.\n\nTypeahead: a trie or prefix index of popular queries, precomputed top-k per prefix, cached at the edge, updated from query logs offline, with a small latency budget (tens of milliseconds).\n\nThe search index is a derived view; the database stays the source of truth, kept in sync by events or CDC.",
+    "tradeoffs": ["Index freshness vs indexing cost: faster refresh means more segment churn.", "Relevance quality vs latency: reranking models cost time."],
+    "pitfalls": ["Treating Elasticsearch as the primary database.", "Index drift from the source because sync failures are not monitored.", "Hot shards from uneven document sizes or routing."],
+    "interview": ["Design typeahead for a search box.", "How do you keep the index in sync?", "How do you rank results?"],
+    "use": ["Full-text search, faceted filtering, log search, product catalogs.", "Typeahead and autocomplete with precomputed prefix results.", "Hybrid keyword plus vector search for RAG retrieval."],
+    "avoid": ["Simple lookups by id or exact field; a database index is enough.", "Strongly consistent reads of the latest write from the index.", "Using LIKE '%term%' scans on large tables."],
+    "qa": [
+      {"q": "Design typeahead.", "a": "Offline, aggregate query logs into counts, build top-k suggestions per prefix (trie or key-value of prefix to list), refresh periodically plus a fast path for trending terms. Serve from memory or edge cache with a debounce on the client and a latency target under 50 ms. Filter unsafe terms and personalize lightly if needed."},
+      {"q": "BM25 vs vector search?", "a": "BM25 matches exact words and rare terms well; vectors capture meaning and handle paraphrase but can miss exact identifiers. Hybrid search combines both and a reranker orders the merged candidates, usually beating either alone."}
+    ]
+  },
+  {
+    "id": "id-generation",
+    "phase": "system-design",
+    "group": "Foundations",
+    "title": "Unique ID generation",
+    "tagline": "Unique, roughly sortable and generated without a central bottleneck.",
+    "viz": null,
+    "explain": "Options:\n\n- Auto-increment: simple and ordered; a single database is the bottleneck and ids leak volume.\n- UUIDv4: no coordination; 128 bits, random, poor index locality (inserts scatter across a B-tree).\n- UUIDv7 / ULID: time-ordered prefix plus randomness; good index locality, no coordination.\n- Snowflake: 64-bit id of timestamp (41 bits), worker id (10 bits), sequence (12 bits). Sortable, compact, about 4096 ids per millisecond per worker. Needs unique worker ids and defense against clock going backwards.\n- Ticket servers or ranges: a service hands out blocks of ids to app servers.\n\nBase62 encoding of a numeric id gives short URLs without collision checks.\n\nDecide by whether you need ordering, size limits, unguessability and independence from a central service.",
+    "tradeoffs": ["Sortable ids leak creation time and volume; random ids hurt index locality.", "Snowflake needs worker coordination; UUIDs need none but are bigger."],
+    "pitfalls": ["Clock skew producing duplicates or going backwards.", "Using sequential public ids for sensitive resources (enumeration attacks).", "Random UUID primary keys on huge B-tree tables causing write amplification."],
+    "interview": ["Design a distributed ID generator.", "How do you handle clock going backwards?", "Why not auto-increment?"],
+    "use": ["Snowflake or UUIDv7 for primary keys in sharded or distributed systems.", "Base62 of a unique id for short links.", "Random unguessable tokens (separately) for secrets and public links."],
+    "avoid": ["Auto-increment across shards without coordination.", "Timestamps alone as ids; collisions under concurrency.", "Treating ids as secrets unless generated from a CSPRNG."],
+    "qa": [
+      {"q": "How does Snowflake avoid collisions?", "a": "Each worker has a unique worker id and a per-millisecond sequence. The id combines timestamp, worker and sequence, so two workers never produce the same value, and one worker never repeats within a millisecond. If the sequence overflows it waits for the next millisecond."},
+      {"q": "The system clock jumps backward. What happens?", "a": "A naive generator could reuse a timestamp and sequence. Detect it: refuse and wait until the clock catches up, or keep using the last timestamp. Use NTP slewing and monitor skew."}
+    ]
+  },
+  {
+    "id": "cdc-outbox",
+    "phase": "system-design",
+    "group": "Distributed systems",
+    "title": "Outbox, CDC and idempotency",
+    "tagline": "Making 'update the database and publish an event' reliable.",
+    "viz": null,
+    "explain": "Dual writes (write to the DB, then publish to a broker) fail when the process dies between them. Two safe patterns:\n\n1. Transactional outbox: in the same transaction as the business change, insert an event row into an outbox table. A relay reads unsent rows and publishes them, marking them sent.\n2. Change data capture: tail the database log (Postgres WAL, MySQL binlog) with a tool like Debezium and emit events for row changes.\n\nBoth give at-least-once delivery, so consumers must be idempotent: store processed message ids (or use natural idempotency like upserts) in the same transaction as the effect.\n\nIdempotency also applies to APIs: clients send an idempotency key; the server records the key and its result atomically with the operation and returns the stored result for repeats.\n\nTogether these give effectively-once processing.",
+    "tradeoffs": ["Outbox adds a table and a relay but keeps logic explicit; CDC needs no app change but couples consumers to table schemas.", "Strict ordering across keys costs throughput."],
+    "pitfalls": ["Publishing before the transaction commits.", "Non-idempotent consumers behind at-least-once delivery.", "Outbox table growing forever with no cleanup."],
+    "interview": ["How do you atomically update a DB and send a message?", "What does exactly-once really mean?", "How do you dedupe in the consumer?"],
+    "use": ["Any service that changes state and must notify others: orders, payments, inventory.", "Keeping search indexes, caches and warehouses in sync with a source of truth.", "Migrations and read-model rebuilds from the change log."],
+    "avoid": ["Dual writes without one of these patterns.", "Using distributed transactions across DB and broker.", "CDC on tables whose schema changes constantly without a contract."],
+    "qa": [
+      {"q": "How do you achieve exactly-once?", "a": "You cannot guarantee exactly-once delivery over an unreliable network. You get at-least-once delivery and make processing idempotent, which yields exactly-once effects. Within Kafka, transactions can make consume-process-produce atomic inside Kafka only."},
+      {"q": "Outbox vs CDC?", "a": "Outbox gives you explicit, versioned event payloads that you control. CDC captures raw row changes without touching application code, which is great for syncing but exposes internal schema. Many teams use CDC to read the outbox table to get both."}
+    ]
+  },
+  {
+    "id": "consistency-models",
+    "phase": "system-design",
+    "group": "Distributed systems",
+    "title": "Consistency models",
+    "tagline": "From linearizable to eventual: what a reader is allowed to see.",
+    "viz": null,
+    "explain": "Models from strongest to weakest:\n\n- Linearizable: behaves like one copy; once a write completes, every later read sees it. Needed for locks, unique constraints, leader election. Costs latency and availability under partition.\n- Sequential and causal: operations respect a consistent order, or at least cause-before-effect order (a reply never appears before its question).\n- Session guarantees: read-your-writes, monotonic reads, monotonic writes: often enough for user-facing apps.\n- Eventual: replicas converge if writes stop. Cheapest and most available.\n\nTransaction isolation is a related axis: read committed, snapshot isolation, serializable. Know the anomalies each allows (dirty read, non-repeatable read, write skew, phantom).\n\nChoose per operation, not per system: money movement can be linearizable while a profile view count is eventual.",
+    "tradeoffs": ["Stronger consistency costs latency and availability.", "Weaker models need application logic to cope with anomalies."],
+    "pitfalls": ["Assuming read replicas are consistent with the primary.", "Using snapshot isolation where write skew breaks an invariant.", "Claiming eventual consistency without bounding how eventual."],
+    "interview": ["What is the difference between linearizability and serializability?", "What is write skew?", "Which consistency do you need for this feature?"],
+    "use": ["Linearizable for uniqueness, locks, balances and leader election.", "Read-your-writes and monotonic reads for user-facing sessions.", "Eventual for counters, feeds, analytics and caches."],
+    "avoid": ["Global strong consistency for data that tolerates staleness; it taxes every request.", "Eventual consistency for invariants like 'never oversell'."],
+    "qa": [
+      {"q": "Linearizability vs serializability?", "a": "Linearizability is about single operations on a single object appearing instantaneous in real-time order. Serializability is about multi-operation transactions behaving as if run one at a time, in some order not necessarily matching real time. Strict serializability is both."},
+      {"q": "Describe write skew.", "a": "Two transactions read overlapping data, each makes a decision from what it read, and writes different rows; both commit under snapshot isolation although together they violate an invariant. Example: two on-call doctors both go off-call because each saw the other still on. Fix with serializable isolation, or lock the rows read, or a constraint."}
+    ]
+  },
+  {
+    "id": "microservices",
+    "phase": "system-design",
+    "group": "Scaling patterns",
+    "title": "Monolith vs microservices",
+    "tagline": "An organizational tool as much as a technical one.",
+    "viz": null,
+    "explain": "A monolith is one deployable unit; a modular monolith keeps strict internal boundaries. Microservices split the system into independently deployable services owning their data.\n\nBenefits of services: independent deploys and scaling, team autonomy, fault isolation, technology choice. Costs: network calls instead of function calls, distributed data and no cross-service transactions, harder debugging, versioning, more infrastructure (service discovery, tracing, CI/CD per service), and failure modes like cascading latency.\n\nSplit along business capabilities (bounded contexts), not technical layers. Each service owns its data; others use its API or events. Use the strangler fig pattern to extract services gradually.\n\nDefault stance: start with a modular monolith; extract a service when a clear scaling, team or isolation reason appears.",
+    "tradeoffs": ["Team independence vs operational and consistency complexity.", "Fine-grained services scale selectively but multiply network hops."],
+    "pitfalls": ["A distributed monolith: services that must deploy together and share a database.", "Splitting too early, before boundaries are understood.", "Chatty synchronous call chains that multiply latency and failure."],
+    "interview": ["Would you start with microservices?", "How do you split a monolith?", "How do you handle transactions across services?"],
+    "use": ["Large organizations where teams need to ship independently.", "Components with very different scaling or reliability needs (GPU inference vs CRUD API).", "Parts needing isolation for security or compliance."],
+    "avoid": ["Small teams and early products; the overhead outweighs the benefit.", "Splitting by technical layer.", "Shared databases between services."],
+    "qa": [
+      {"q": "Monolith or microservices for a new startup?", "a": "A modular monolith: one deployable, clear module boundaries, one database. It is faster to build and operate, and well-drawn modules can later be extracted when scaling or team size justifies it."},
+      {"q": "How do you keep data consistent across services?", "a": "Each service owns its data. Use events (outbox) for propagation, sagas for multi-step business transactions, idempotent consumers, and accept eventual consistency, designing the UX for pending states."}
+    ]
+  },
+  {
+    "id": "observability",
+    "phase": "system-design",
+    "group": "Resilience",
+    "title": "Observability, SLOs and incident response",
+    "tagline": "You cannot operate what you cannot see.",
+    "viz": null,
+    "explain": "Pillars: metrics (aggregated numbers: rate, errors, duration; saturation), logs (events with context), traces (a request across services). For LLM systems add prompts, tool calls, token and cost data per trace.\n\nDefine SLIs (what you measure: success rate, latency percentile, freshness) and SLOs (the target, such as 99.9% of requests under 300 ms over 30 days). The error budget (1 - SLO) governs how much risk you can take; if you burn it, slow feature work and fix reliability.\n\nAlert on symptoms users feel (burn rate of the error budget), not on every cause. Use runbooks, dashboards per service (RED method: rate, errors, duration; USE for resources), and distributed tracing with propagated ids.\n\nIncident response: detect, triage, mitigate first (roll back, shed load, fail over), then diagnose; communicate; write a blameless postmortem with action items.",
+    "tradeoffs": ["High-cardinality telemetry is powerful but costly.", "Tight SLOs cost more engineering and infrastructure per nine."],
+    "pitfalls": ["Alert fatigue from noisy, cause-based alerts.", "Averages hiding tail latency; look at p95 and p99.", "No trace ids across services or queues."],
+    "interview": ["How do you know your system is healthy?", "What SLOs would you set?", "Walk through how you would handle an outage."],
+    "use": ["Every production service; define SLOs before launch.", "Tracing for any multi-service or multi-step agent path.", "Error budgets to negotiate reliability vs velocity."],
+    "avoid": ["Alerting on CPU alone instead of user-facing symptoms.", "Setting 100% targets; they are unattainable and halt progress.", "Logging everything at debug level in production without sampling."],
+    "qa": [
+      {"q": "What does 99.9% availability allow?", "a": "About 43 minutes of downtime per 30 days (8.8 hours per year). 99.99% allows about 4.3 minutes a month. Each extra nine usually costs much more in redundancy and process, so choose it from business impact."},
+      {"q": "First 10 minutes of an incident?", "a": "Acknowledge, assign an incident commander, check what changed recently (deploys, flags, traffic), look at user-facing symptoms and dashboards, mitigate fast (rollback, disable a flag, shed load, fail over) before root-causing, and communicate status regularly."}
+    ]
+  },
+  {
+    "id": "multi-region",
+    "phase": "system-design",
+    "group": "Resilience",
+    "title": "Multi-region, disaster recovery and backups",
+    "tagline": "Surviving the loss of a zone, a region, or a bad deploy of data.",
+    "viz": null,
+    "explain": "Terms: RPO (how much data you can lose) and RTO (how long you can be down).\n\nDeployment models:\n\n- Backup and restore: cheapest, long RTO.\n- Pilot light / warm standby: minimal or scaled-down copy in another region, promoted on failure.\n- Active-passive: full standby, replication async or sync.\n- Active-active: both regions serve traffic; needs conflict handling or partitioning of data by home region.\n\nAcross availability zones inside a region you usually get low-latency synchronous replication; across regions latency makes synchronous replication costly, so most designs use async with a defined RPO.\n\nRoute traffic with DNS or anycast and health checks; fail over with practice, not hope. Backups must be tested by restoring, and kept separate from the primary (point-in-time recovery, immutable copies) because replication copies mistakes and ransomware too.\n\nData residency (GDPR) can force region-pinned data.",
+    "tradeoffs": ["Active-active gives the best availability and latency but the hardest consistency; active-passive is simpler but has failover time and data loss risk.", "Lower RPO and RTO cost more."],
+    "pitfalls": ["Untested failover and restore procedures.", "Replication mistaken for backup.", "Hidden single-region dependencies (auth, DNS, a shared database)."],
+    "interview": ["Design for region failure.", "What are RPO and RTO for this system?", "How do you test disaster recovery?"],
+    "use": ["Multi-AZ for almost everything in production.", "Multi-region for strict availability targets, latency to global users, or residency rules.", "Regular game days that fail over for real."],
+    "avoid": ["Active-active before you have clear requirements and conflict-resolution rules.", "Backups stored in the same account and region as the primary."],
+    "qa": [
+      {"q": "Design for a full region outage.", "a": "Replicate data asynchronously to a second region, keep infrastructure as code so a standby stack can be brought up, health-check and route traffic with DNS or global load balancing, state RPO as the replication lag and RTO as the failover time, and rehearse it. Remove hidden single-region dependencies and decide what degrades gracefully."},
+      {"q": "Active-active: how do you handle conflicting writes?", "a": "Prefer partitioning so each record has a home region and conflicts do not occur. Otherwise use last-write-wins for tolerant data, CRDTs for mergeable data, or application-level merge, and make unique constraints region-aware."}
+    ]
+  },
+  {
+    "id": "security-tenancy",
+    "phase": "system-design",
+    "group": "Resilience",
+    "title": "Security and multi-tenancy in design",
+    "tagline": "Isolation, least privilege and cost control built in from the start.",
+    "viz": null,
+    "explain": "Security basics in a design: authenticate (OAuth2/OIDC, API keys, mTLS between services), authorize (RBAC/ABAC, check on every request at the resource), encrypt in transit (TLS) and at rest (KMS-managed keys), manage secrets in a vault, validate all input, log access, and rate limit.\n\nMulti-tenancy models:\n\n- Shared everything with a tenant_id column (cheapest, risk of leaks; enforce with row-level security).\n- Schema or database per tenant (stronger isolation, more ops).\n- Dedicated stack per tenant (strongest isolation, highest cost; for regulated or very large customers).\n\nNoisy neighbors: per-tenant quotas, fair queuing, and separate pools for heavy tenants.\n\nLLM-specific: prompt injection, data exfiltration through tools, cross-tenant retrieval leaks (filter by tenant in the vector store), PII in prompts and logs, and per-tenant spend caps.",
+    "tradeoffs": ["Isolation strength vs cost and operational overhead.", "Centralized policy enforcement is consistent but adds a dependency."],
+    "pitfalls": ["Authorization checked only at the UI or gateway, not the resource.", "Retrieval without tenant filters in RAG.", "Secrets in code, prompts or logs."],
+    "interview": ["Design multi-tenant isolation.", "How do you stop one tenant from starving the others?", "How do you defend an agent from prompt injection?"],
+    "use": ["Row-level security with tenant ids for most SaaS; dedicated stacks for strict compliance tiers.", "Least-privilege credentials and sandboxing for agent tools.", "Per-tenant quotas and budgets from day one."],
+    "avoid": ["Trusting model output as a security boundary.", "Shared credentials across tenants or tools.", "Database-per-tenant for hundreds of thousands of tiny tenants."],
+    "qa": [
+      {"q": "How do you prevent cross-tenant data leaks in RAG?", "a": "Store the tenant id as mandatory metadata on every chunk, enforce it as a filter inside the vector query (not after retrieval), keep it out of the model's control, and test with adversarial prompts and cross-tenant canary documents. Consider separate indexes for high-sensitivity tenants."},
+      {"q": "How do you defend against prompt injection in an agent?", "a": "Treat all retrieved or tool content as untrusted data, give tools least privilege and scoped credentials, require approval for sensitive actions, constrain outputs with schemas, run in a sandbox with limited network access, and monitor and log tool calls. No prompt-only defense is sufficient."}
+    ]
+  },
+  {
+    "id": "vector-search",
+    "phase": "system-design",
+    "group": "AI systems",
+    "title": "Vector search and embeddings at scale",
+    "tagline": "Nearest-neighbor search trades a little recall for a lot of speed.",
+    "viz": null,
+    "explain": "Embeddings map text, images or other data to vectors where similar meaning is close. Search finds the nearest vectors to a query vector by cosine similarity, dot product or Euclidean distance.\n\nExact search compares against every vector: O(n). Approximate nearest neighbor (ANN) indexes trade a little recall for speed:\n\n- HNSW: layered proximity graph. Fast and high recall, memory hungry, slower inserts.\n- IVF: cluster vectors, search only the closest clusters. Often combined with product quantization (PQ) to shrink memory.\n- DiskANN-style indexes keep most of the graph on SSD for very large collections.\n\nPractical issues: metadata filtering interacts with the index (pre-filter vs post-filter changes recall and speed), updates and deletes, re-embedding when you change models (needs a dual index and staged cutover), dimensionality and cost, and evaluation with recall@k against exact search on your own data.\n\nHybrid search combines vectors with BM25 and reranks.",
+    "tradeoffs": ["Higher recall costs memory and latency (more HNSW links, more clusters probed).", "Quantization saves memory at some accuracy cost."],
+    "pitfalls": ["Mixing embeddings from different models in one index.", "Post-filtering that returns too few results.", "Never measuring recall of the ANN index."],
+    "interview": ["How do you search a billion vectors?", "HNSW vs IVF?", "How do you change the embedding model safely?"],
+    "use": ["Semantic search and RAG retrieval, recommendations, deduplication.", "pgvector for moderate scale with relational filters; dedicated vector DBs for large scale and high QPS."],
+    "avoid": ["Vectors for exact identifiers, codes and numbers where keyword search is better.", "A separate vector database when a few million vectors fit comfortably in Postgres.", "Treating cosine similarity scores as calibrated probabilities."],
+    "qa": [
+      {"q": "Search a billion vectors under 100 ms.", "a": "Shard the index across nodes, use IVF with product quantization or a disk-based graph to fit memory, search shards in parallel and merge top-k, rerank a small candidate set with a stronger model, cache frequent queries, and measure recall against an exact baseline on a sample."},
+      {"q": "Migrate to a new embedding model.", "a": "Embeddings are not comparable across models. Build a second index with the new model in the background, shadow-query both and compare retrieval quality on an eval set, then switch traffic gradually, keep the old index for rollback, and delete it after a safe window."}
+    ]
+  }
+]

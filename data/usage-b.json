@@ -1,0 +1,132 @@
+{
+  "contention": {
+    "use": ["Atomic conditional updates (UPDATE ... WHERE stock > 0) for simple counters and inventory.", "Optimistic concurrency (version column) when conflicts are rare.", "Pessimistic locks or a single-writer queue when conflicts are frequent and retries are costly.", "Distributed locks with fencing tokens only for rare critical sections."],
+    "avoid": ["Distributed locks without lease expiry and fencing; a paused client can act after losing the lock.", "Read-modify-write in application code without a transaction or compare-and-set.", "Holding locks across network calls."],
+    "qa": [
+      {"q": "Ticket sale: two users buy the last seat. How do you prevent double booking?", "a": "Make the reservation atomic in the database: a unique constraint on (event, seat) or UPDATE seat SET holder = ? WHERE id = ? AND holder IS NULL and check affected rows. For a checkout window use a short-lived hold with an expiry, then confirm on payment. Under a flash-sale stampede, put a queue or virtual waiting room in front so the database sees steady load."},
+      {"q": "Why is Redis SETNX alone a weak lock?", "a": "If the holder stalls past the lease, another client gets the lock and both write. Use a fencing token that the resource checks and rejects if older, or avoid locks by using compare-and-set on the data itself."}
+    ]
+  },
+  "proximity": {
+    "use": ["Geohash or a quadtree for simple 'near me' searches with moderate data.", "S2 or H3 cells for uniform coverage and large-scale geo systems (ride hailing, delivery).", "PostGIS or a geo-capable store when the dataset fits and you need rich queries."],
+    "avoid": ["Scanning all points and computing distance; it does not scale.", "Geohash boundaries without checking neighboring cells; close points can have different prefixes.", "Treating latitude/longitude as flat coordinates near the poles or across the antimeridian."],
+    "qa": [
+      {"q": "Find nearby drivers.", "a": "Index driver locations by cell (geohash/S2/H3) in a fast store like Redis; on a request, compute the rider's cell and neighbors, fetch candidates, filter by exact distance and availability, rank by ETA. Drivers update their location every few seconds, so keep positions in memory with a TTL rather than writing each ping to a durable database."},
+      {"q": "Geohash vs quadtree?", "a": "Geohash is a string prefix so it works with ordinary indexes and key-value stores, but cells have uneven shapes and boundary issues. A quadtree adapts depth to density (small cells in cities, large in deserts) but needs an in-memory tree you must shard and rebuild."}
+    ]
+  },
+  "scaling-reads-writes": {
+    "use": ["Read scaling: replicas, caching, CDN, denormalized read models, precomputation.", "Write scaling: batching, queues, sharding, partitioning by key, append-only logs, and relaxing consistency for non-critical data."],
+    "avoid": ["Sharding before you have exhausted indexing, caching, replicas and a bigger machine; it makes everything harder.", "A shard key that creates hotspots (timestamps, low-cardinality values).", "Cross-shard transactions on the hot path."],
+    "qa": [
+      {"q": "Reads are 100x writes and the DB is at 90% CPU. What do you do, in order?", "a": "Check the slow queries and indexes first, add a cache for hot reads, add read replicas, precompute heavy aggregates into a read model, then consider sharding. Each step is cheaper and more reversible than the next."},
+      {"q": "How do you pick a shard key?", "a": "High cardinality, even distribution, and aligned with the dominant query so most queries hit one shard. User id is common. Avoid monotonically increasing keys on range sharding; hash them. Plan how you will reshard (virtual shards or consistent hashing) before you need to."}
+    ]
+  },
+  "load-balancer": {
+    "use": ["Round robin for similar, short, stateless requests.", "Least connections or least latency when request cost varies.", "Consistent hashing or sticky sessions when state lives on the server or cache locality matters.", "Active health checks plus outlier ejection to remove sick servers fast."],
+    "avoid": ["Round robin when some requests are long (for example LLM streams); load becomes uneven.", "Sticky sessions as a substitute for externalizing session state; failure loses the session.", "A single load balancer as a single point of failure; run it redundantly."],
+    "qa": [
+      {"q": "How do you balance LLM inference traffic?", "a": "Requests vary hugely in duration and memory (prompt and output length), so use least-loaded routing based on in-flight tokens or queue depth, not round robin. Prefer prefix-cache-aware routing so requests sharing a long prefix land on the replica that holds the cache, while still capping imbalance."},
+      {"q": "How do you avoid the load balancer being a SPOF?", "a": "Multiple instances behind anycast or DNS with health checks, active-passive with a floating IP, or a managed cloud LB that is itself distributed."}
+    ]
+  },
+  "realtime": {
+    "use": ["Long polling for simple, infrequent updates.", "Server-sent events for one-way streams such as notifications and LLM token streaming.", "WebSockets for bidirectional low-latency interaction (chat, collaboration, games).", "Pub/sub (Redis, Kafka) behind the gateways to route messages to the right connection."],
+    "avoid": ["WebSockets for data that changes rarely; polling is simpler.", "Keeping connection state only on one server with no way to reconnect and resume.", "Pushing every change to every client; coalesce and throttle."],
+    "qa": [
+      {"q": "Design chat delivery to a user connected to some server.", "a": "Connection servers register user to server in a fast store. A message goes to the chat service, is persisted (with a per-conversation sequence number), then published to the recipient's server via pub/sub, which pushes it down the socket. Offline users get push notifications and fetch history by sequence on reconnect. Clients ack, and resend with idempotency ids to handle duplicates."},
+      {"q": "How do you scale to millions of concurrent connections?", "a": "Stateless-ish connection tier horizontally scaled, tuned for file descriptors and memory per connection, with heartbeats to drop dead peers, connection draining on deploys, and backoff with jitter on client reconnects so a restart does not cause a stampede."}
+    ]
+  },
+  "large-blobs": {
+    "use": ["Object storage (S3, GCS) for images, video and files, with metadata in a database.", "Pre-signed URLs and direct-to-storage uploads so large bytes bypass your servers.", "Multipart or resumable uploads for big files; a CDN for delivery."],
+    "avoid": ["Storing large blobs inside the relational database on the hot path.", "Proxying large uploads and downloads through application servers.", "Public buckets with guessable URLs for private content."],
+    "qa": [
+      {"q": "Design large file upload.", "a": "Client asks the API for an upload session; the API returns a pre-signed multipart URL set. The client uploads chunks directly to object storage in parallel, retrying failed parts, then calls complete. A storage event triggers async processing (virus scan, transcode, thumbnails). Metadata and status live in the database; delivery goes through a CDN with signed URLs."},
+      {"q": "How do you keep metadata and blob consistent?", "a": "Write the metadata row as pending, upload, then mark ready on the storage event; a janitor deletes orphaned blobs and pending rows older than a threshold. Treat storage as the source of the bytes and the database as the source of truth about what exists."}
+    ]
+  },
+  "long-running": {
+    "use": ["Return a job id immediately (202 Accepted), process asynchronously, and let clients poll or receive a webhook.", "Durable workflow engines (Temporal, Step Functions) for multi-step processes that need retries, timers and compensation.", "Checkpointing for work that can resume after a crash."],
+    "avoid": ["Holding an HTTP request open for minutes.", "Hand-rolled state machines in cron jobs and flags when you need retries and visibility; use a workflow engine.", "Non-idempotent steps in a retried workflow."],
+    "qa": [
+      {"q": "Design a video transcoding service.", "a": "Upload to object storage, enqueue a job, split into segments processed in parallel by workers, then stitch and publish. Track state in a database, make each step idempotent, retry with backoff, send failures to a dead-letter queue, and notify via webhook or polling. Autoscale workers on queue depth."},
+      {"q": "Why a workflow engine over queues and cron?", "a": "It persists state and history, handles retries, timeouts, human-in-the-loop waits and compensation, and lets you resume exactly where a failure happened. A pure queue pipeline makes this logic scattered and hard to debug."}
+    ]
+  },
+  "saga": {
+    "use": ["Business transactions spanning several services or databases where two-phase commit is impractical.", "Orchestration when you want one place that knows the flow; choreography for small, loosely coupled flows."],
+    "avoid": ["When a single database transaction can cover the work; keep it simple.", "Steps with no possible compensation (sending an email) placed early; do irreversible steps last.", "Compensations that are not idempotent."],
+    "qa": [
+      {"q": "Saga vs two-phase commit?", "a": "2PC gives atomicity but holds locks across services, blocks if the coordinator fails, and is rarely supported across heterogeneous systems. A saga uses local transactions plus compensating actions: no global locks, available, but only eventually consistent and intermediate states are visible, so you design for that (pending states, semantic locks)."},
+      {"q": "What if a compensation fails?", "a": "Retry it with backoff until it succeeds, since it must be idempotent and eventually succeed; after a limit, alert and move to manual repair with the saga state recorded durably."}
+    ]
+  },
+  "token-bucket": {
+    "use": ["Per-user or per-API-key rate limits that allow short bursts but cap the average rate.", "Token-based limits for LLM APIs (tokens per minute as well as requests).", "Leaky bucket when you need a smooth, constant outflow."],
+    "avoid": ["Fixed window counters when boundary bursts (2x at the edge) matter.", "A single central counter with a network call on every request without caching or sharding.", "Rate limiting without telling clients (use 429 with Retry-After)."],
+    "qa": [
+      {"q": "Design a distributed rate limiter.", "a": "Key by user or API key. Keep bucket state (tokens, last refill time) in Redis and update it atomically with a Lua script, refilling lazily from elapsed time. For very high scale, allocate local token slices per gateway instance and sync periodically, trading exactness for speed. Decide fail-open vs fail-closed if Redis is down, and return 429 with Retry-After."},
+      {"q": "Token bucket vs sliding window?", "a": "Token bucket allows bursts up to capacity and is cheap (two numbers per key). Sliding window log is exact but stores timestamps; sliding window counter approximates it with two counters. Choose token bucket unless you must enforce a strict rolling limit."}
+    ]
+  },
+  "circuit-breaker": {
+    "use": ["Calls to dependencies that can become slow or fail (payments, third-party APIs, LLM providers).", "Paired with timeouts, bulkheads and fallbacks so one bad dependency cannot take down callers."],
+    "avoid": ["Wrapping calls where failures are not correlated, such as one-off validation errors counted as dependency health.", "Without a fallback or clear error behavior; opening the breaker must lead to something sensible.", "Thresholds guessed once and never tuned."],
+    "qa": [
+      {"q": "Describe the states.", "a": "Closed passes calls and counts failures. When failures exceed a threshold in a window it opens and fails fast. After a cooldown it goes half-open and lets a few trial calls through; success closes it, failure reopens it."},
+      {"q": "Circuit breaker vs retry?", "a": "They work together but pull in opposite directions: retries help with brief faults; a breaker stops traffic when the fault persists so you do not make recovery harder. Always retry inside the breaker, with backoff, jitter and a budget."}
+    ]
+  },
+  "retry-storm": {
+    "use": ["Exponential backoff with jitter on every retry.", "Retry budgets, deadlines propagated across hops, and load shedding at the server.", "Retries only at one layer of the stack."],
+    "avoid": ["Retrying at every layer: 3 layers with 3 attempts each is 27 calls for one request.", "Retrying non-idempotent writes without idempotency keys.", "Retrying immediately and in lockstep after an outage."],
+    "qa": [
+      {"q": "A dependency slows down and the whole system melts. Why?", "a": "Callers time out and retry, multiplying load on an already struggling service; threads and connections pile up, latency rises, and the failure spreads upward. Fix with timeouts, backoff and jitter, retry budgets, circuit breakers, bulkheads, and server-side load shedding that rejects early."},
+      {"q": "What is load shedding?", "a": "When overloaded, the server rejects excess work quickly (for example by priority or queue age) instead of trying to serve everything slowly. This preserves goodput for the requests it accepts and signals clients to back off."}
+    ]
+  },
+  "gateway": {
+    "use": ["A single front door for LLM providers: routing, fallback, caching, auth, budgets, rate limits, logging.", "Centralizing policy (PII redaction, guardrails) so apps do not each reimplement it.", "Switching models without changing every caller."],
+    "avoid": ["Putting heavy business logic in the gateway; it becomes a bottleneck and a single point of failure.", "Gateways for a single small app with one provider where it just adds a hop.", "Caching responses for prompts with user-specific or time-sensitive content."],
+    "qa": [
+      {"q": "Design an LLM gateway.", "a": "Authenticate the caller, check budget and rate limits (requests and tokens), apply input guardrails and redaction, check a semantic or exact cache, pick a model/provider by policy, stream the response through, and fall back on errors or timeouts to another provider. Log tokens, latency, cost and traces per tenant and emit metrics. Keep it stateless and horizontally scalable with limits held in a fast shared store."},
+      {"q": "How do you handle a provider outage?", "a": "Health checks and circuit breakers per provider, automatic fallback to an equivalent model, with attention to prompt and output-format differences, and a degraded mode (smaller model, cached answers) rather than failing outright."}
+    ]
+  },
+  "batching": {
+    "use": ["Continuous (in-flight) batching for LLM serving to keep GPUs busy as requests finish at different times.", "Batching writes, embedding calls and network requests to amortize per-call overhead.", "Offline batch APIs for non-urgent work at lower cost."],
+    "avoid": ["Large static batches for interactive latency-sensitive traffic; the slowest request holds everyone.", "Batching without a max wait time; light traffic would add latency waiting for a full batch."],
+    "qa": [
+      {"q": "Why is batching so important for LLM serving?", "a": "Decoding is memory-bandwidth bound: loading the weights for one token costs about the same as for many. Serving many sequences per forward pass raises throughput almost linearly until compute or KV-cache memory becomes the limit. Continuous batching admits new requests as others finish."},
+      {"q": "Throughput vs latency trade-off?", "a": "Bigger batches improve cost per token but increase per-request latency and memory pressure. Pick a batch and concurrency target from your latency SLO (time to first token and inter-token latency), and scale replicas instead of growing batches beyond it."}
+    ]
+  },
+  "kv-cache": {
+    "use": ["Always in autoregressive decoding: cache keys and values of previous tokens so each step computes only the new one.", "Prefix caching when many requests share long system prompts or documents.", "Paged attention to avoid memory fragmentation and serve more concurrent sequences."],
+    "avoid": ["Assuming long contexts are free: KV memory grows linearly with sequence length and batch size.", "Ignoring quantization or sliding-window/GQA options when memory limits concurrency."],
+    "qa": [
+      {"q": "Estimate KV cache memory.", "a": "Per token, 2 (K and V) x layers x kv_heads x head_dim x bytes. For a 7B-class model with 32 layers, 8 KV heads, head_dim 128, fp16, that is 2 x 32 x 8 x 128 x 2 B = about 131 KB per token, so 4k tokens is roughly 0.5 GB per sequence. Multiply by concurrent sequences to size the GPU."},
+      {"q": "How do you reduce KV cache pressure?", "a": "Grouped-query or multi-query attention, KV quantization (8 or 4 bit), paged allocation, prefix sharing, sliding window attention, shorter prompts through retrieval or summarization, and offloading cold caches to CPU."}
+    ]
+  },
+  "rag-pipeline": {
+    "use": ["Questions over private, changing or large knowledge the model was not trained on.", "When answers must cite sources and be updatable without retraining.", "Hybrid retrieval (BM25 plus vectors) with reranking for quality."],
+    "avoid": ["When the knowledge fits comfortably in the prompt and rarely changes; just include it.", "Tasks that need reasoning over the whole corpus (aggregation across thousands of documents); retrieval of a few chunks cannot answer them.", "Skipping evaluation of retrieval separately from generation."],
+    "qa": [
+      {"q": "Answers are wrong. How do you debug RAG?", "a": "Separate the stages. First check whether the right chunk was retrieved (recall@k on a labeled set). If not, fix chunking, embeddings, hybrid search, metadata filters or add a reranker. If it was retrieved but the answer is wrong, fix the prompt, context ordering and size, or the model. Measure faithfulness and answer relevance, and look at real traces."},
+      {"q": "RAG vs fine-tuning?", "a": "RAG injects fresh, attributable knowledge at query time; fine-tuning changes behavior, style or format and bakes in static knowledge poorly. Use RAG for facts, fine-tuning for behavior, and often both."},
+      {"q": "How do you chunk documents?", "a": "Respect structure (headings, paragraphs, code blocks), use sizes of a few hundred tokens with modest overlap, attach metadata (source, section, date), and consider parent-child retrieval: match small chunks, return the larger surrounding context."}
+    ]
+  },
+  "agent-loop": {
+    "use": ["Open-ended tasks where the steps are not known upfront and tools are needed.", "Bounded loops with a step limit, budget and clear stop conditions.", "Human approval for high-impact tool calls."],
+    "avoid": ["Fixed, well-understood workflows; a deterministic pipeline with LLM steps is cheaper, faster and more reliable.", "Unbounded autonomy with write access and no guardrails.", "Giving an agent dozens of overlapping tools; selection accuracy drops."],
+    "qa": [
+      {"q": "Workflow or agent?", "a": "Use a workflow (predefined code paths, LLM at specific steps) when the process is known; it is predictable and testable. Use an agent when the path depends on intermediate results and cannot be enumerated, and accept the cost, latency and reliability trade. Start simple and add autonomy only where evaluation shows it helps."},
+      {"q": "How do you stop an agent going off the rails?", "a": "Max steps and token/cost budgets, tool allowlists with least privilege, schema-validated arguments, sandboxed execution, loop and repetition detection, approvals for destructive actions, and tracing so failures can be replayed and added to the eval set."},
+      {"q": "How do you make agents reliable?", "a": "Narrow, well-described tools; structured outputs; retries on tool errors with the error message shown to the model; checkpoints so work resumes; and an evaluation suite of realistic tasks run on every prompt, tool or model change."}
+    ]
+  }
+}

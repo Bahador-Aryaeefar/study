@@ -1,0 +1,149 @@
+{
+  "id": "foundations",
+  "title": "Engineering Foundations",
+  "tagline": "The base every senior engineer stands on: Python, CS, Linux, Git, networking, algorithms.",
+  "level": "foundation",
+  "color": "#38bdf8",
+  "topics": [
+    {
+      "id": "python",
+      "title": "Python mastery",
+      "summary": "Production-grade Python, not scripts. You will write most agent and ML code in it.",
+      "items": [
+        "Data model: dunder methods, descriptors, properties, __slots__",
+        "Iterators, generators, yield from, itertools, functools",
+        "Decorators, closures, context managers (contextlib)",
+        "Type hints: generics, Protocol, TypedDict, ParamSpec, mypy/pyright",
+        "Dataclasses and Pydantic v2 (validation, serialization, settings)",
+        "asyncio: event loop, tasks, gather, semaphores, cancellation, timeouts",
+        "Threading vs multiprocessing vs asyncio; the GIL and free-threaded Python",
+        "Memory model: refcounting, GC, weakrefs, profiling with tracemalloc",
+        "Packaging: pyproject.toml, uv/poetry, venvs, lockfiles, wheels",
+        "Testing: pytest fixtures, parametrize, mocking, property-based (hypothesis)",
+        "Profiling and performance: cProfile, py-spy, vectorization, Cython/Numba/Rust extensions",
+        "Logging, structured logs, exceptions design, retries (tenacity)"
+      ],
+      "questions": [
+        "Explain the GIL. When does multithreading still help in Python?",
+        "How does asyncio differ from threads? When does it hurt you?",
+        "What happens when a generator is garbage-collected mid-iteration?",
+        "How do you design a retry policy that does not cause a retry storm?"
+      ],
+      "resources": ["Fluent Python (Ramalho)", "Python docs: asyncio and data model", "Real Python advanced tutorials", "Pydantic docs"]
+    },
+    {
+      "id": "cs-fundamentals",
+      "title": "Computer science core",
+      "summary": "Operating systems, memory, concurrency and compilers at the level needed to reason about performance.",
+      "items": [
+        "Processes, threads, scheduling, context switches",
+        "Virtual memory, paging, page cache, mmap, NUMA basics",
+        "Concurrency: locks, atomics, deadlocks, race conditions, memory ordering",
+        "File systems, I/O models: blocking, non-blocking, epoll, io_uring",
+        "CPU caches, branch prediction, SIMD, why memory bandwidth dominates ML",
+        "Compilation, interpreters, JIT, bytecode",
+        "Serialization formats: JSON, Protobuf, Avro, Arrow, Parquet, MessagePack",
+        "Unicode, tokenization-adjacent text encoding, UTF-8 pitfalls"
+      ],
+      "questions": [
+        "What is the difference between a process and a thread, and what does a context switch cost?",
+        "Why is GPU inference usually memory-bandwidth bound rather than compute bound?",
+        "Explain how epoll lets one thread serve thousands of connections."
+      ],
+      "resources": ["Operating Systems: Three Easy Pieces", "Computer Systems: A Programmer's Perspective", "MIT 6.S081"]
+    },
+    {
+      "id": "linux-shell",
+      "title": "Linux and shell",
+      "summary": "You will debug production boxes and containers. Be fast at the terminal.",
+      "items": [
+        "Filesystem layout, permissions, users, groups, sudo",
+        "Process management: ps, top/htop, kill, signals, systemd units",
+        "Text tooling: grep, sed, awk, jq, xargs, find, ripgrep",
+        "Networking tools: curl, dig, ss/netstat, tcpdump, nc, traceroute",
+        "Bash scripting: set -euo pipefail, functions, traps, here-docs",
+        "SSH, tunnels, key management, ssh-agent, bastion hosts",
+        "Resource debugging: strace, lsof, perf, vmstat, iostat, nvidia-smi",
+        "cgroups and namespaces: what a container actually is"
+      ],
+      "questions": [
+        "A service is slow. Walk me through diagnosing it on a Linux host.",
+        "What is a zombie process and how do you get rid of it?",
+        "How do cgroups limit container memory and what happens at the limit (OOM killer)?"
+      ],
+      "resources": ["The Linux Command Line (Shotts)", "Brendan Gregg: Linux performance", "Julia Evans zines"]
+    },
+    {
+      "id": "git",
+      "title": "Git and collaboration",
+      "summary": "Version control, code review and trunk-based delivery.",
+      "items": [
+        "Branching strategies: trunk-based vs gitflow",
+        "Rebase vs merge, interactive rebase, bisect, reflog, cherry-pick",
+        "Monorepo vs polyrepo trade-offs",
+        "Code review practice, PR size, CODEOWNERS",
+        "Conventional commits, semantic versioning, changelogs",
+        "Git hooks, pre-commit, secret scanning"
+      ],
+      "questions": ["How would you find the commit that introduced a regression?", "Trunk-based development vs long-lived branches: when does each win?"],
+      "resources": ["Pro Git book", "Trunk Based Development site"]
+    },
+    {
+      "id": "networking",
+      "title": "Networking and the web",
+      "summary": "Every agent call is a network call. Know what happens on the wire.",
+      "items": [
+        "OSI/TCP-IP model, IP, subnets, CIDR, NAT",
+        "TCP: handshake, congestion control, slow start, TIME_WAIT, keepalive",
+        "UDP and QUIC / HTTP/3",
+        "DNS resolution, caching, TTL, GeoDNS",
+        "HTTP/1.1 vs HTTP/2 vs HTTP/3, headers, caching, idempotency",
+        "TLS 1.3 handshake, certificates, mTLS, SNI",
+        "REST, gRPC, GraphQL, WebSockets, SSE (why LLM streaming uses SSE)",
+        "Proxies, reverse proxies, load balancers L4 vs L7, CDNs",
+        "Auth on the wire: cookies, JWT, OAuth2/OIDC flows, API keys"
+      ],
+      "questions": [
+        "What happens when you type a URL and hit enter, in detail?",
+        "SSE vs WebSockets for streaming LLM tokens: trade-offs?",
+        "Why does HTTP/2 help with many small requests and where does it still fall short?"
+      ],
+      "resources": ["High Performance Browser Networking (Grigorik)", "Cloudflare Learning Center", "Beej's Guide to Network Programming"]
+    },
+    {
+      "id": "dsa",
+      "title": "Data structures and algorithms",
+      "summary": "Still asked in many senior loops. Keep it sharp, not obsessive.",
+      "items": [
+        "Complexity analysis, amortized analysis",
+        "Arrays, hash maps, sets, heaps, deques, tries",
+        "Trees: BST, balanced trees, segment tree, Fenwick",
+        "Graphs: BFS, DFS, topological sort, Dijkstra, union-find, MST",
+        "Dynamic programming patterns",
+        "Binary search on answer, two pointers, sliding window, monotonic stack",
+        "Sorting, selection, top-k, streaming algorithms",
+        "Probabilistic structures: Bloom filter, HyperLogLog, count-min sketch, LSH",
+        "Approximate nearest neighbor ideas: HNSW graph, IVF, product quantization (conceptually)"
+      ],
+      "questions": ["Design an LRU cache with O(1) operations.", "Find top-k frequent items in a stream with bounded memory.", "How does HNSW search work at a high level?"],
+      "resources": ["NeetCode roadmap", "Algorithms (Sedgewick)", "Designing Data-Intensive Applications ch. 3"]
+    },
+    {
+      "id": "software-craft",
+      "title": "Software craftsmanship",
+      "summary": "What separates senior from mid: design judgement, testing discipline, maintainability.",
+      "items": [
+        "SOLID, composition over inheritance, dependency injection",
+        "Design patterns that matter: strategy, adapter, observer, state machine, repository",
+        "Clean architecture / hexagonal architecture",
+        "Test pyramid, contract tests, snapshot tests, mutation testing",
+        "API design: versioning, pagination, error models, idempotency keys",
+        "Refactoring safely, feature flags, expand/contract migrations",
+        "Technical writing: design docs, ADRs, runbooks",
+        "Reading large codebases and debugging unfamiliar systems"
+      ],
+      "questions": ["How do you test code that calls a non-deterministic LLM?", "How do you roll out a breaking API change with zero downtime?"],
+      "resources": ["A Philosophy of Software Design (Ousterhout)", "Refactoring (Fowler)", "Software Engineering at Google"]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "id": "devops-cloud",
+  "title": "DevOps and Cloud",
+  "tagline": "Ship, run and scale it. Containers, Kubernetes, IaC, CI/CD, reliability.",
+  "level": "core",
+  "color": "#60a5fa",
+  "topics": [
+    {
+      "id": "containers",
+      "title": "Containers and Docker",
+      "summary": "The unit of deployment for everything.",
+      "items": [
+        "Images, layers, build cache, multi-stage builds",
+        "Dockerfile best practices: small, reproducible, non-root",
+        "Docker Compose for local stacks",
+        "Registries, image scanning, SBOMs, signing",
+        "GPU containers: NVIDIA Container Toolkit, CUDA images",
+        "Networking and volumes",
+        "Container security: capabilities, seccomp, rootless"
+      ],
+      "questions": ["How would you shrink a 12 GB ML image?", "Explain how layers and caching work."],
+      "resources": ["Docker docs", "Docker Deep Dive (Poulton)"]
+    },
+    {
+      "id": "kubernetes",
+      "title": "Kubernetes",
+      "summary": "Expected knowledge for senior platform-adjacent roles.",
+      "items": [
+        "Architecture: API server, etcd, scheduler, kubelet, controllers",
+        "Pods, Deployments, StatefulSets, DaemonSets, Jobs, CronJobs",
+        "Services, Ingress / Gateway API, DNS, CNI, NetworkPolicy",
+        "ConfigMaps, Secrets, external secrets operators",
+        "Resource requests/limits, QoS classes, HPA, VPA, KEDA",
+        "Cluster autoscaling and Karpenter",
+        "GPU scheduling: device plugin, MIG, time-slicing, node selectors/taints",
+        "Probes, rollout strategies, PodDisruptionBudgets",
+        "Helm and Kustomize",
+        "Operators and CRDs (KServe, Ray operator, Kubeflow)",
+        "RBAC, Pod Security, admission policies (OPA/Kyverno)",
+        "Debugging: describe, logs, events, ephemeral containers",
+        "Service mesh basics: Istio, Linkerd"
+      ],
+      "questions": ["A pod is in CrashLoopBackOff. Walk through the debugging.", "How do you autoscale a GPU inference deployment on queue depth?", "How does the scheduler place a pod?"],
+      "resources": ["Kubernetes the Hard Way", "Kubernetes Up & Running", "CKA / CKAD curriculum"]
+    },
+    {
+      "id": "cloud",
+      "title": "Cloud platforms",
+      "summary": "Depth in one cloud, working knowledge of the others.",
+      "items": [
+        "Compute, networking (VPC, subnets, security groups), IAM fundamentals",
+        "Managed Kubernetes (EKS/GKE/AKS), serverless (Lambda, Cloud Run)",
+        "Managed AI: Bedrock, Vertex AI, Azure AI Foundry, SageMaker",
+        "Storage, databases, queues as managed services",
+        "GPU capacity: on-demand, reserved, spot, quotas, neoclouds (CoreWeave, Lambda, Modal, RunPod)",
+        "Multi-region and multi-AZ design, DR strategies (RPO/RTO)",
+        "Cost management: tagging, budgets, FinOps for GPUs and tokens",
+        "Private networking to model providers, PrivateLink, VPN"
+      ],
+      "questions": ["Design a VPC for an agent platform that runs untrusted code.", "Spot vs on-demand GPUs for inference: what is your strategy?"],
+      "resources": ["AWS Well-Architected Framework", "A Cloud Guru / Adrian Cantrill", "FinOps Foundation"]
+    },
+    {
+      "id": "iac-cicd",
+      "title": "Infrastructure as Code and CI/CD",
+      "summary": "Everything reproducible, reviewed and automated.",
+      "items": [
+        "Terraform / OpenTofu: state, modules, workspaces, drift",
+        "Pulumi and CDK alternatives",
+        "Ansible and configuration management",
+        "CI: GitHub Actions, GitLab CI, caching, matrix builds",
+        "CD: GitOps with ArgoCD / Flux",
+        "Deployment strategies: rolling, blue-green, canary, progressive delivery (Argo Rollouts)",
+        "Secrets in pipelines, OIDC federation instead of long-lived keys",
+        "Supply chain security: SLSA, Sigstore, dependency pinning",
+        "Pipelines for AI: eval gates, model registry promotion, prompt deploys"
+      ],
+      "questions": ["Design a CI/CD pipeline that gates on LLM evals.", "What is GitOps and why prefer pull-based deploys?"],
+      "resources": ["Terraform Up & Running", "Accelerate (Forsgren)", "ArgoCD docs"]
+    },
+    {
+      "id": "sre",
+      "title": "Reliability engineering (SRE)",
+      "summary": "Run it at 3 AM without panic.",
+      "items": [
+        "SLIs, SLOs, error budgets",
+        "Monitoring: golden signals, USE and RED methods",
+        "Alerting philosophy: symptom-based, actionable",
+        "Incident response, on-call, postmortems (blameless)",
+        "Capacity planning and load testing (k6, Locust)",
+        "Chaos engineering and game days",
+        "Resilience patterns: timeouts, retries, circuit breakers, bulkheads, load shedding",
+        "Runbooks and operational readiness reviews",
+        "SLOs for AI: quality SLOs, latency SLOs, cost SLOs"
+      ],
+      "questions": ["Define SLOs for an LLM-backed chat product.", "Describe an incident you handled end to end."],
+      "resources": ["Google SRE Book and Workbook", "Release It! (Nygard)"]
+    }
+  ]
+}

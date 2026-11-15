@@ -1,0 +1,76 @@
+{
+  "id": "interview-career",
+  "title": "Interview Prep and Senior Leadership",
+  "tagline": "Convert knowledge into offers: portfolio, behavioral stories, ML/agent case rounds, senior-level scope.",
+  "level": "interview",
+  "color": "#facc15",
+  "topics": [
+    {
+      "id": "portfolio",
+      "title": "Portfolio and proof of work",
+      "summary": "Evidence beats claims.",
+      "items": [
+        "Build and ship an agent product end to end with evals, tracing and a public write-up",
+        "Implement a mini transformer / GPT from scratch",
+        "Build a RAG system with measured retrieval quality and an eval harness",
+        "Deploy a model with vLLM on Kubernetes with autoscaling and dashboards",
+        "Contribute to an open-source AI project (frameworks, evals, MCP servers)",
+        "Write 3 deep technical posts about problems you solved",
+        "Keep a quantified impact list: latency, cost, quality, adoption numbers"
+      ],
+      "questions": ["Which project best shows your depth and what would you do differently?"],
+      "resources": ["GitHub", "Personal blog", "Hugging Face Spaces"]
+    },
+    {
+      "id": "ml-agent-rounds",
+      "title": "Technical round types",
+      "summary": "Know the formats and prepare for each.",
+      "items": [
+        "Coding round: Python, medium-level DSA, clean code",
+        "Practical coding: build an agent loop / tool-calling / RAG pipeline live",
+        "ML fundamentals deep-dive: transformers, training, optimization",
+        "LLM application case study: debug a failing RAG or agent",
+        "System design round: classic and AI-specific",
+        "Eval design round: design metrics and datasets for a given product",
+        "Take-home: scoped project with write-up",
+        "Past project deep dive: architecture, decisions, failures, metrics",
+        "Research paper discussion: read and critique recent papers"
+      ],
+      "questions": ["Implement a minimal ReAct agent without any framework in 30 minutes.", "Here's a transcript of a failing agent run. Diagnose it."],
+      "resources": ["Company engineering blogs", "Glassdoor / Blind interview reports", "Latent Space podcast"]
+    },
+    {
+      "id": "behavioral",
+      "title": "Behavioral and senior-scope stories",
+      "summary": "Seniors are hired for judgement, ownership and influence.",
+      "items": [
+        "STAR stories: conflict, failure, ambiguity, tight deadline, mentoring",
+        "A story where you changed technical direction with data",
+        "A story about a production incident you owned",
+        "A story about saying no / pushing back on scope",
+        "A story about delivering a cross-team project",
+        "Leading design reviews and writing design docs",
+        "Mentoring and raising team standards",
+        "Product sense: tie technical choices to user and business outcomes",
+        "Communicating uncertainty and risk to non-technical stakeholders"
+      ],
+      "questions": ["Tell me about a time an AI feature you shipped failed in production.", "How do you decide whether to build an AI feature at all?"],
+      "resources": ["The Staff Engineer's Path (Reilly)", "Staff Eng (Larson)", "The Manager's Path"]
+    },
+    {
+      "id": "staying-current",
+      "title": "Staying current",
+      "summary": "The field moves monthly. Build a lightweight, sustainable habit.",
+      "items": [
+        "Weekly: skim 3 primary sources (arXiv sanity, provider changelogs, engineering blogs)",
+        "Monthly: read one paper deeply and implement the key idea",
+        "Follow: Anthropic, OpenAI, Google DeepMind, Hugging Face, vLLM, LangChain release notes",
+        "Podcasts and newsletters: Latent Space, The Batch, Import AI, Interconnects",
+        "Re-run your own evals on each new frontier model release",
+        "Maintain a personal notes system and a list of open questions"
+      ],
+      "questions": ["What recent paper or release changed how you build agents, and why?"],
+      "resources": ["arXiv cs.CL / cs.LG", "Papers with Code", "Hugging Face Daily Papers"]
+    }
+  ]
+}

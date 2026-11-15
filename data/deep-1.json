@@ -1,0 +1,319 @@
+{
+  "cache": {
+    "flows": [
+      {
+        "title": "Cache-aside read and write",
+        "hint": "The most common pattern: the application owns the cache.",
+        "nodes": [
+          {"id": "app", "label": "App", "icon": "⚙️"},
+          {"id": "cache", "label": "Cache", "sub": "Redis", "icon": "⚡"},
+          {"id": "db", "label": "Database", "icon": "🗄️"}
+        ],
+        "steps": [
+          {"at": "app", "note": "READ: app needs user:42", "ms": 0},
+          {"at": "cache", "note": "GET user:42 returns nothing (miss)", "ms": 1, "tone": "warn"},
+          {"at": "db", "note": "SELECT from the database", "ms": 12},
+          {"at": "cache", "note": "SET user:42 with TTL 300s plus jitter", "ms": 1, "tone": "good"},
+          {"at": "app", "note": "Return data. Next reader hits the cache in about 1 ms", "ms": 0, "tone": "good"},
+          {"at": "db", "note": "WRITE: update the database first (source of truth)", "ms": 10},
+          {"at": "cache", "note": "DELETE user:42 (delete, not set, so a racing writer cannot leave a stale value)", "ms": 1, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Write strategies compared in detail",
+        "body": "Cache-aside (lazy loading): read path checks cache, loads and fills on a miss. Write path updates the DB then invalidates the key. Pros: only requested data is cached, cache failure degrades to DB reads. Cons: first read is slow, small stale window, app code owns the logic.\n\nRead-through: the cache library loads from the DB on a miss. Same behavior as cache-aside but encapsulated.\n\nWrite-through: every write goes to the cache which synchronously writes to the DB. Cache is always fresh; writes pay both latencies; you cache data that may never be read.\n\nWrite-back (write-behind): write to the cache, acknowledge, flush to the DB asynchronously in batches. Lowest write latency and write coalescing; risk of losing acknowledged writes if the cache node dies before the flush. Needs replication or a durable log.\n\nWrite-around: write only to the DB, let reads populate the cache. Good when written data is rarely read soon.\n\nRefresh-ahead: proactively refresh hot keys before they expire so readers never see a miss.\n\nWhy delete instead of update on write? Two writers A then B update the DB in that order, but their cache updates interleave as B then A. The cache keeps A's older value until TTL. Deleting avoids storing a value computed from stale reads (a following read repopulates from the DB). A remaining race (a slow reader refills with an old value after your delete) is bounded by TTL; use versioned keys or delayed double-delete if you need tighter bounds."
+      },
+      {
+        "title": "Hit rate math and sizing",
+        "body": "Effective latency = hit_rate × t_cache + (1 − hit_rate) × t_db.\n\nExample: t_cache = 1 ms, t_db = 20 ms. At 90% hits: 0.9 × 1 + 0.1 × 20 = 2.9 ms. At 99%: 0.99 + 0.2 = 1.19 ms.\n\nLoad on the DB = (1 − hit_rate) × request_rate. At 50,000 reads/s: 90% hits leaves 5,000/s on the DB; 99% leaves 500/s. Raising the hit rate from 90% to 99% cuts DB load by 10x, which is why the last few percent matter.\n\nSizing: cache the working set, not the dataset. If 20% of keys get 80% of traffic (Zipf-like), caching the top 20% captures most hits. Memory needed = hot_keys × (key + value + ~50-100 bytes overhead per entry in Redis). Watch evictions: a steady eviction rate with low hit rate means the cache is too small or the keys do not repeat.\n\nTTL choice: expected staleness = up to TTL. Pick from the business tolerance (a price can be 1 minute stale, an account balance cannot). Add jitter: ttl = base × (1 ± 0.1) so keys loaded together do not expire together."
+      },
+      {
+        "title": "Failure modes: stampede, penetration, avalanche, hot key",
+        "body": "Stampede (dog-pile): a hot key expires and thousands of requests miss at once and hit the DB. Fixes: single-flight (one request recomputes, the rest wait on it), a short lock or lease on refill, serve-stale-while-revalidate (return the old value while one worker refreshes), early/probabilistic refresh (each reader refreshes with probability rising as expiry nears), jittered TTLs.\n\nPenetration: requests for keys that never exist (attackers, bad ids) always miss and reach the DB. Fixes: cache negative results with a short TTL, validate ids, a Bloom filter of existing keys in front.\n\nAvalanche: many keys expire at the same moment or the cache cluster dies, so the DB takes the full load. Fixes: jitter, multiple cache replicas, circuit breaker plus load shedding in front of the DB, warm the cache before shifting traffic.\n\nHot key: one key gets so much traffic that its cache node saturates (celebrity profile). Fixes: replicate the key across nodes and read from a random replica (key#1..key#N), add a per-instance in-memory cache with a very short TTL, or split the value.\n\nCold start: after a deploy or restart the cache is empty. Warm it from a snapshot or a replay of recent keys, and ramp traffic gradually."
+      },
+      {
+        "title": "Eviction policies",
+        "body": "LRU: evict the least recently used. Simple, good for recency-driven access, vulnerable to scans (one large table scan flushes the useful entries).\n\nLFU: evict the least frequently used. Better when popularity is stable; needs aging or a new popular key never gets in. TinyLFU / W-TinyLFU (used by Caffeine) admits a new key only if its estimated frequency beats the victim's, resisting scan pollution.\n\nFIFO and Random: cheap, sometimes surprisingly competitive. Redis uses approximate LRU by sampling a few keys rather than tracking exact order.\n\nTTL-based: expire by time; combine with a max-memory policy so the cache cannot grow without bound.\n\nImplementation question: exact LRU is a hash map plus a doubly linked list, O(1) get and put. Be ready to sketch it."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Write strategy comparison",
+        "head": ["Strategy", "Read latency", "Write latency", "Consistency", "Data loss risk", "Typical use"],
+        "rows": [
+          ["Cache-aside", "Miss is slow", "DB only, then invalidate", "Small stale window", "None", "Default for most apps"],
+          ["Read-through", "Miss is slow", "DB only", "Small stale window", "None", "Library-managed caches"],
+          ["Write-through", "Always fast", "DB plus cache", "Strong (cache = DB)", "None", "Read-heavy data needing freshness"],
+          ["Write-back", "Always fast", "Fastest (async flush)", "DB lags the cache", "Yes if the cache dies", "Counters, high-write buffers"],
+          ["Write-around", "Miss after write", "DB only", "Fresh from DB", "None", "Write-once, rarely read"]
+        ]
+      }
+    ]
+  },
+  "consistent-hash": {
+    "flows": [
+      {
+        "title": "Adding a node to the ring",
+        "hint": "Only the keys between the new node and its predecessor move.",
+        "nodes": [
+          {"id": "hash", "label": "hash(key)", "icon": "#️⃣"},
+          {"id": "ring", "label": "Ring lookup", "sub": "next clockwise", "icon": "⭕"},
+          {"id": "node", "label": "Owner node", "icon": "🖥️"},
+          {"id": "new", "label": "New node D", "icon": "➕"}
+        ],
+        "steps": [
+          {"at": "hash", "note": "Hash the key to a position on a 0 to 2^32 ring", "ms": 0},
+          {"at": "ring", "note": "Walk clockwise to the first virtual node point at or after the position (binary search over sorted points)", "ms": 0},
+          {"at": "node", "note": "That point belongs to physical node B. B owns the key", "ms": 0, "tone": "good"},
+          {"at": "new", "note": "Node D joins: it inserts many virtual points on the ring", "ms": 0, "tone": "warn"},
+          {"at": "ring", "note": "Each new point takes over the arc between itself and the previous point. About 1/N of all keys now belong to D", "ms": 0},
+          {"at": "node", "note": "Other keys keep their owners. Compare modulo hashing, where nearly every key moves", "ms": 0, "tone": "good"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "The math: how many keys move",
+        "body": "Modulo hashing: node = hash(key) mod N. Going from N to N + 1 nodes, a key stays only if hash mod N equals hash mod (N + 1). That happens for about 1/(N + 1) of keys, so roughly N/(N + 1) of keys move. From 9 to 10 nodes, 90% of keys relocate: a cache loses 90% of its contents, or a database migrates 90% of its data.\n\nConsistent hashing: adding one node to N moves about K/(N + 1) keys, where K is the total, and they all move to the new node. Removing a node moves only that node's keys (about K/N) and spreads them to its neighbors. Nothing moves between unaffected nodes.\n\nLoad balance: with one point per node the arc sizes follow roughly an exponential distribution, so the most loaded node can hold about ln(N) times the average. With V virtual nodes per physical node the standard deviation of load falls roughly as 1/sqrt(V). 100 to 200 virtual nodes per server gives a few percent imbalance. Heterogeneous machines get a number of virtual nodes proportional to capacity.\n\nReplication on the ring: store each key on the next R distinct physical nodes clockwise (skip virtual nodes of the same machine). This is the preference list in Dynamo and Cassandra-style stores."
+      },
+      {
+        "title": "Implementation details interviewers probe",
+        "body": "Data structure: a sorted array (or balanced tree) of (hash, node) points. Lookup is a binary search for the first point >= hash(key), wrapping to index 0. Add or remove node: insert or delete its V points, O(V log P).\n\nHash function: needs good spread, not cryptographic strength (murmur3, xxhash, md5 are all used).\n\nVariants:\n\n- Rendezvous (highest random weight) hashing: for each key compute score(key, node) for every node and pick the max. No ring, perfectly even in expectation, O(N) per lookup, trivial to implement and to take the top R for replicas. Great for small N.\n- Jump consistent hash: a tiny stateless function mapping key to bucket 0..N-1 with minimal movement, but buckets must be numbered consecutively, so you can only add or remove the last one.\n- Maglev hashing (Google): builds a lookup table for load balancers, favoring even spread and fast lookup.\n- Bounded-load consistent hashing: cap each node at (1 + epsilon) × average load and spill to the next node, used for load balancers where a hot key must not overload one server.\n\nWhat it does not solve: hot keys (a key still maps to one node), range scans (order is destroyed), and data migration mechanics (you still copy data and handle reads during the move)."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Partitioning schemes",
+        "head": ["Scheme", "Keys moved on change", "Balance", "Range queries", "Lookup cost", "Notes"],
+        "rows": [
+          ["hash mod N", "~N/(N+1) of keys", "Even", "No", "O(1)", "Fine for fixed N only"],
+          ["Consistent hash ring + vnodes", "~1/N of keys", "Good with many vnodes", "No", "O(log P)", "Dynamo, Cassandra, many caches"],
+          ["Rendezvous hashing", "~1/N of keys", "Very even", "No", "O(N)", "Simple, small clusters, easy replicas"],
+          ["Jump hash", "~1/N of keys", "Very even", "No", "O(log N), no memory", "Append-only bucket numbering"],
+          ["Range partitioning", "Only split ranges", "Skew-prone", "Yes", "O(log R) via metadata", "Bigtable, HBase, Spanner"],
+          ["Directory/lookup", "Whatever you choose", "Controllable", "Depends", "Extra hop or cache", "Flexible, directory is critical"]
+        ]
+      }
+    ]
+  },
+  "replication": {
+    "flows": [
+      {
+        "title": "Leader-follower write with semi-sync",
+        "hint": "One synchronous follower protects acknowledged writes; others are async.",
+        "nodes": [
+          {"id": "client", "label": "Client", "icon": "📱"},
+          {"id": "leader", "label": "Leader", "icon": "👑"},
+          {"id": "sync", "label": "Sync follower", "icon": "🔁"},
+          {"id": "async", "label": "Async follower", "icon": "⏳"}
+        ],
+        "steps": [
+          {"at": "client", "note": "Client sends a write", "ms": 0},
+          {"at": "leader", "note": "Leader appends to its log and applies the change", "ms": 2},
+          {"at": "sync", "note": "Log record shipped to the synchronous follower, which persists and acks", "ms": 3, "tone": "good"},
+          {"at": "leader", "note": "Leader acknowledges the client. Data now lives on 2 nodes", "ms": 0, "tone": "good"},
+          {"at": "async", "note": "Async follower receives the record later. A read from it right now would be stale (replication lag)", "ms": 40, "tone": "warn"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Replication topologies in depth",
+        "body": "Single-leader: all writes go to one leader; followers apply its log and serve reads. Simple, no write conflicts. Limits: write throughput is one node, failover needed, replica lag.\n\nMulti-leader: several nodes accept writes (often one per region) and replicate to each other. Good for multi-region latency and offline clients (calendar sync, collaborative editing). Cost: write conflicts. Resolution: last-write-wins (loses data), merge functions, CRDTs, or avoiding conflicts by routing each record to a home leader.\n\nLeaderless (Dynamo, Cassandra, Riak): the client or a coordinator writes to W of N replicas and reads from R. Read repair and hinted handoff and anti-entropy (Merkle trees) converge replicas. High availability, tunable consistency, conflict handling needed.\n\nReplication methods: statement-based (fragile with non-deterministic functions), write-ahead log shipping (exact but tied to storage format), logical/row-based (stable, enables CDC and cross-version replication), and state machine replication through consensus (Raft), where the log is the single source of order.\n\nSync vs async vs semi-sync: sync blocks on followers (no loss, lower availability, higher latency); async acks immediately (fast, can lose the tail on failover); semi-sync waits for one follower. With N replicas and W synchronous acks you can survive loss of up to W − 1 nodes without losing acknowledged data."
+      },
+      {
+        "title": "Replica lag anomalies and fixes",
+        "body": "Read-your-writes: a user posts a comment and refreshes, but the replica has not received it. Fixes: read from the leader for data the user just changed (or for a short time after writing), or track the user's last write position (LSN or timestamp) and only read from a replica that has reached it.\n\nMonotonic reads: a user sees a new value, refreshes and sees an older one because the second read hit a more lagged replica. Fix: pin a user's session to one replica.\n\nConsistent prefix reads: an answer appears before its question because the two writes were on different partitions replicating at different speeds. Fix: causally related writes go to the same partition, or use causal consistency tracking.\n\nMeasure and alert on lag (seconds behind, bytes behind). Long-running queries on a replica can also block replay and add lag.\n\nFailover hazards: choose the most up-to-date replica; fence the old leader (STONITH, epoch numbers, lease expiry) to prevent split brain where two nodes both accept writes; clients must retry with idempotency because in-flight writes may have been lost or applied."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Replication models",
+        "head": ["Model", "Write path", "Conflicts", "Availability", "Consistency", "Examples"],
+        "rows": [
+          ["Single-leader", "One node", "None", "Failover needed", "Strong from leader, lagging reads", "Postgres, MySQL, MongoDB"],
+          ["Multi-leader", "Any leader", "Yes, need resolution", "High, region-local", "Eventual across leaders", "Multi-region MySQL, CouchDB, collaborative apps"],
+          ["Leaderless quorum", "W of N replicas", "Yes, versions or LWW", "Very high", "Tunable (R + W > N)", "Cassandra, Dynamo, Riak"],
+          ["Consensus (Raft/Paxos)", "Leader plus majority", "None (single log)", "Majority must be up", "Linearizable", "etcd, Spanner, CockroachDB"]
+        ]
+      }
+    ]
+  },
+  "indexing": {
+    "deep": [
+      {
+        "title": "How a B-tree index works and costs",
+        "body": "A B+tree stores sorted keys in fixed-size pages (often 8-16 KB). Internal pages hold separator keys and child pointers; leaves hold keys and row pointers (or the rows themselves in a clustered index) and are linked for range scans.\n\nHeight is about log_f(N) where f is the fanout (hundreds). With f = 500, three levels index 125 million keys and four levels 62 billion. A lookup is therefore 3 to 4 page reads, usually with the top levels cached in memory.\n\nCosts: each index is extra storage, and every insert, update of an indexed column or delete must update every index (write amplification, page splits). Random primary keys (UUIDv4) scatter inserts across the tree; sequential or time-ordered keys append to the right edge and are friendlier.\n\nClustered vs secondary: a clustered index defines the physical row order (InnoDB primary key); secondary indexes store the primary key and need a second lookup unless they cover the query."
+      },
+      {
+        "title": "Composite, covering and partial indexes: the rules",
+        "body": "Leftmost-prefix rule: an index on (a, b, c) can serve filters on a, on (a, b) and on (a, b, c), but not on b alone.\n\nColumn order: put equality predicates first, then a range predicate, then ORDER BY columns. For WHERE status = 'open' AND created_at > ? ORDER BY created_at, an index on (status, created_at) serves filtering and sorting with no extra sort. After a range column, later columns cannot be used to seek.\n\nCovering index: contains every column the query needs (INCLUDE columns in Postgres/SQL Server), so the engine answers from the index without visiting the table (index-only scan).\n\nPartial (filtered) index: indexes only rows matching a predicate (WHERE active = true), smaller and faster.\n\nSelectivity: an index helps when it narrows to a small fraction of rows (roughly under 5 to 10%). Low-cardinality columns alone (a boolean) are rarely worth indexing.\n\nHow to check: run EXPLAIN (ANALYZE) and look for index scans vs sequential scans, estimated vs actual rows, and sort steps. Common index killers: functions on the column (WHERE lower(email) = ... needs a functional index), implicit type casts, leading wildcards in LIKE, and OR across different columns."
+      },
+      {
+        "title": "Other index types",
+        "body": "Hash index: O(1) equality only, no ranges.\n\nLSM-based indexes: write-optimized; reads check memtable and SSTables.\n\nInverted index: term to document list, for text search.\n\nGIN/GiST (Postgres): JSONB containment, arrays, full-text, geometric.\n\nBitmap indexes: great for low-cardinality columns in analytics warehouses.\n\nSpatial indexes: R-tree, geohash, quadtree, S2/H3 cells.\n\nVector indexes: HNSW, IVF.\n\nBloom filters: not an index, but used to skip files or partitions.\n\nIn distributed stores, a secondary index is either local (each partition indexes its own rows; queries scatter-gather all partitions) or global (partitioned by index key; targeted reads but writes touch another partition and are usually async)."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Index types",
+        "head": ["Type", "Good for", "Not for", "Write cost", "Notes"],
+        "rows": [
+          ["B+tree", "Equality, ranges, sorting", "Free-text, very high write rates", "Medium (page updates)", "Default everywhere"],
+          ["Hash", "Exact match only", "Ranges, sorting", "Low", "Rarely better than B-tree in practice"],
+          ["Inverted", "Text and tag lookup", "Numeric ranges", "Medium (segments)", "Search engines"],
+          ["Bitmap", "Low-cardinality analytics", "High-write OLTP", "High on update", "Warehouses"],
+          ["Spatial (R-tree, S2)", "Nearby and bounding-box queries", "Plain scalar lookups", "Medium", "PostGIS, geo stores"],
+          ["Vector (HNSW/IVF)", "Nearest-neighbor similarity", "Exact filters alone", "Higher (graph/cluster upkeep)", "Approximate results"]
+        ]
+      }
+    ]
+  },
+  "bloom": {
+    "deep": [
+      {
+        "title": "Formulas and sizing",
+        "body": "A Bloom filter is m bits and k hash functions. To add x: set bits h1(x)..hk(x). To query: if all k bits are set say 'maybe present', otherwise 'definitely absent'. No false negatives; false positives possible.\n\nFalse positive probability after inserting n items: p ≈ (1 − e^(−k·n/m))^k.\n\nOptimal number of hashes: k = (m/n) × ln 2 ≈ 0.693 × (m/n).\n\nBits needed for a target p: m = −n × ln(p) / (ln 2)^2 ≈ 1.44 × n × log2(1/p).\n\nRule of thumb: about 9.6 bits per item gives p = 1% (k = 7); about 14.4 bits per item gives 0.1% (k = 10).\n\nExample: 100 million keys, p = 1%. m ≈ 9.6 × 100M = 960M bits = 120 MB, k = 7. Compare a hash set storing 100M 8-byte keys: 800 MB plus overhead. If the filter is overfilled (n much larger than planned), p rises quickly, so size for growth or use a scalable Bloom filter.\n\nTwo hash functions are enough in practice: g_i(x) = h1(x) + i × h2(x) (double hashing, Kirsch-Mitzenmacher)."
+      },
+      {
+        "title": "Variants and where they are used",
+        "body": "Counting Bloom filter: each cell is a small counter, enabling deletes at 3 to 4 times the space.\n\nCuckoo filter: supports deletion, often better space at low false-positive rates.\n\nScalable Bloom filter: chain filters with tighter p as the set grows.\n\nBlocked Bloom filter: keep all k bits within one cache line for speed.\n\nUses: LSM-tree stores (skip SSTables that cannot contain the key, saving most disk reads for absent keys), web crawlers (seen-URL check), CDNs (do not cache one-hit-wonders: cache an object only on its second request), databases (join filters), browsers (malicious URL prechecks), and cache-penetration protection.\n\nRelated sketches: HyperLogLog (count distinct with about 1.04/sqrt(m) relative error in a few KB), Count-Min Sketch (approximate frequencies and heavy hitters), MinHash (set similarity). Know that these trade exactness for tiny memory."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Probabilistic structures",
+        "head": ["Structure", "Answers", "Error", "Memory", "Deletes"],
+        "rows": [
+          ["Bloom filter", "Is x in the set?", "False positives only", "~10 bits per item at 1%", "No"],
+          ["Counting Bloom", "Is x in the set?", "False positives", "3-4x Bloom", "Yes"],
+          ["Cuckoo filter", "Is x in the set?", "False positives", "Often below Bloom at low p", "Yes"],
+          ["HyperLogLog", "How many distinct items?", "~1.04/sqrt(m) relative", "~12 KB for 0.8% error", "No"],
+          ["Count-Min Sketch", "How often did x occur?", "Over-estimates only", "Width × depth counters", "Limited"]
+        ]
+      }
+    ]
+  },
+  "storage-engines": {
+    "flows": [
+      {
+        "title": "LSM-tree write and read path",
+        "hint": "Writes are sequential and cheap; reads may touch several files.",
+        "nodes": [
+          {"id": "wal", "label": "WAL", "sub": "sequential log", "icon": "📝"},
+          {"id": "mem", "label": "Memtable", "sub": "sorted, in RAM", "icon": "🧠"},
+          {"id": "l0", "label": "SSTables L0", "icon": "📄"},
+          {"id": "ln", "label": "Compacted levels", "icon": "📚"}
+        ],
+        "steps": [
+          {"at": "wal", "note": "WRITE: append the record to the write-ahead log (durable, sequential I/O)", "ms": 1},
+          {"at": "mem", "note": "Insert into the sorted in-memory memtable. Write is acknowledged", "ms": 0, "tone": "good"},
+          {"at": "l0", "note": "Memtable fills up, is frozen and flushed to disk as an immutable sorted SSTable", "ms": 20},
+          {"at": "ln", "note": "Background compaction merges SSTables, drops overwritten values and expired tombstones", "ms": 200, "tone": "warn"},
+          {"at": "mem", "note": "READ: check the memtable first (newest data)", "ms": 0},
+          {"at": "l0", "note": "Then SSTables newest to oldest; a Bloom filter per file skips files that cannot contain the key", "ms": 2},
+          {"at": "ln", "note": "Finally deeper levels. Read amplification is the number of files consulted", "ms": 3}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Amplification: the three costs",
+        "body": "Write amplification (WA) = bytes physically written to storage / bytes the application wrote. Read amplification (RA) = disk reads per logical read. Space amplification (SA) = bytes on disk / logical data size.\n\nB-tree: WA comes from rewriting a whole page for a small change plus the WAL (typically 5 to 30x for small random writes on SSD in the worst case); RA is low (tree height); SA is moderate (pages are partially filled, about 70% average).\n\nLeveled LSM: each byte is rewritten once per level it moves through. With fanout 10 and 6 levels, WA can reach 10 × levels / 2, often 20 to 40x; RA is low (about one file per level, helped by Bloom filters); SA is low (about 1.1x).\n\nSize-tiered LSM: lower WA (about log of the number of tiers) but higher RA and SA (up to 2x during compaction because old and new files coexist).\n\nThe RUM conjecture: you cannot minimize Read, Update (write) and Memory/space overheads at once; every engine picks two. Tuning compaction is choosing where to sit.\n\nSSD wear: write amplification shortens flash life and consumes I/O bandwidth, so cost per byte written matters at scale."
+      },
+      {
+        "title": "Write-ahead log, checkpoints and crash recovery",
+        "body": "A WAL records each change before it modifies data pages. After a crash the engine replays the log from the last checkpoint to redo committed work and undo uncommitted work (ARIES-style redo and undo).\n\nDurability depends on fsync: commit is durable only after the log record reaches stable storage. Group commit batches many transactions into one fsync to raise throughput.\n\nCheckpoints periodically flush dirty pages and record a log position so recovery does not replay from the beginning.\n\nThe same log powers replication (ship the log) and CDC (read the log), which is why WAL-based designs show up everywhere.\n\nLSM stores also use a WAL for the memtable. Without it, a crash would lose the in-memory writes."
+      },
+      {
+        "title": "Row vs column storage",
+        "body": "Row store: all columns of a row together. Great for OLTP (fetch or update one row).\n\nColumn store: each column stored contiguously, compressed with run-length, dictionary and delta encoding, and scanned with vectorized CPU instructions. A query touching 3 of 100 columns reads about 3% of the data. Excellent for analytics; poor for single-row updates, which are batched into delta stores.\n\nFormats: Parquet and ORC on object storage; ClickHouse, BigQuery, Snowflake, Redshift as engines. Typical architecture: OLTP database, CDC or batch ETL, columnar warehouse for analytics (HTAP engines try to do both).\n\nPartitioning plus min/max zone maps let scans skip entire files, so sorting or clustering data by commonly filtered columns matters a lot."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Engine comparison",
+        "head": ["Engine", "Write throughput", "Point read", "Range scan", "Space", "Weak spot", "Examples"],
+        "rows": [
+          ["B-tree", "Medium (random I/O)", "Excellent", "Excellent", "Medium", "Heavy random writes, page splits", "Postgres, MySQL InnoDB, SQLite"],
+          ["Leveled LSM", "High", "Good (Bloom filters)", "Good", "Low (~1.1x)", "High WA during compaction", "RocksDB, LevelDB"],
+          ["Size-tiered LSM", "Very high", "Slower (many files)", "Slower", "Up to 2x", "Read and space amplification", "Cassandra default, ScyllaDB"],
+          ["Columnar", "Batch loads", "Poor for single rows", "Excellent for aggregates", "Low (compressed)", "Row-level updates", "ClickHouse, Parquet, BigQuery"],
+          ["Append-only log", "Highest", "Needs an index", "Sequential only", "Retention based", "No random access by key", "Kafka, WAL files"]
+        ]
+      }
+    ]
+  },
+  "sharding": {
+    "deep": [
+      {
+        "title": "Choosing the shard key: a worked example",
+        "body": "Requirements for a good key: high cardinality, even distribution of data and traffic, matches the dominant query (so most requests touch one shard), and stable (a key that changes means moving rows).\n\nExample: a messaging app. Query 1: fetch the latest messages of a conversation. Query 2: list a user's conversations. Sharding by user_id makes query 2 local but splits a conversation across two users' shards. Sharding by conversation_id makes query 1 local and a conversation's messages sit together. Pick conversation_id for messages (the hot, large table) and keep a small separate table user_id to conversation_ids, sharded by user_id.\n\nBad keys: created_at (all new writes hit the newest shard), country (skew: a few countries dominate), boolean or enum fields, and anything where a single value can dominate (a celebrity user).\n\nCompound keys: (tenant_id, id) keeps a tenant's data together for isolation and per-tenant moves, but a giant tenant becomes a hot shard unless it can be split further.\n\nHotspot mitigation: key salting (append a random suffix 0..N-1 for writes to a hot key, merge on read), splitting hot ranges automatically (Bigtable, Spanner, CockroachDB), caching, and moving a heavy tenant to a dedicated shard."
+      },
+      {
+        "title": "Resharding and cross-shard operations",
+        "body": "Logical shards: create many more logical shards (say 1,024) than physical nodes. The routing table maps logical shard to node. To rebalance, move whole logical shards. Never change the key to shard mapping function, only the shard to node mapping.\n\nOnline migration recipe: (1) start copying a logical shard to the target while the source keeps serving; (2) stream ongoing changes via CDC or dual-write; (3) verify counts and checksums; (4) briefly pause writes (or use a fence token), drain the final changes; (5) flip routing; (6) keep the old copy as a rollback window, then delete.\n\nCross-shard queries: scatter-gather to all shards and merge (latency is the slowest shard, cost scales with shard count). Prefer queries that include the shard key. For analytics, copy data to a warehouse instead.\n\nCross-shard transactions: avoid on the hot path. Options: design so related rows share a shard key; sagas with compensation; two-phase commit (blocking, rarely worth it); or a database with built-in distributed transactions (Spanner, CockroachDB, Vitess with limits).\n\nGlobal uniqueness: generate ids with Snowflake or UUIDv7 rather than per-shard sequences; enforce unique constraints on the shard key, or via a lookup table or a dedicated service for other fields (like unique email).\n\nSecondary indexes: local (scatter queries) or global (separate sharded index table, updated asynchronously)."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Sharding strategies",
+        "head": ["Strategy", "Strength", "Weakness", "Rebalancing", "Used by"],
+        "rows": [
+          ["Range", "Range scans, ordered data", "Hotspots on sequential keys", "Split and merge ranges", "Bigtable, HBase, Spanner"],
+          ["Hash", "Even distribution", "Range queries scatter", "Needs consistent hashing or vnodes", "Cassandra, DynamoDB, Redis Cluster slots"],
+          ["Directory", "Maximum flexibility", "Lookup service is critical", "Move any key anytime", "Many SaaS tenant routers"],
+          ["Geo", "Data residency, latency", "Uneven population", "Per-region", "Multi-region apps, GDPR"],
+          ["Tenant", "Isolation, easy per-tenant ops", "Giant tenants skew", "Move tenants", "B2B SaaS"]
+        ]
+      }
+    ]
+  },
+  "queues": {
+    "flows": [
+      {
+        "title": "Consumer group processing with retry and DLQ",
+        "hint": "At-least-once delivery with a dead-letter queue.",
+        "nodes": [
+          {"id": "prod", "label": "Producer", "icon": "📤"},
+          {"id": "queue", "label": "Queue/topic", "sub": "partitioned", "icon": "📬"},
+          {"id": "cons", "label": "Consumer", "icon": "⚙️"},
+          {"id": "dlq", "label": "Dead-letter queue", "icon": "☠️"}
+        ],
+        "steps": [
+          {"at": "prod", "note": "Producer sends an event keyed by order_id", "ms": 0},
+          {"at": "queue", "note": "Hash(order_id) picks the partition, so all events of one order stay in order", "ms": 2},
+          {"at": "cons", "note": "Consumer reads, processes and only then commits the offset or acks", "ms": 30, "tone": "good"},
+          {"at": "cons", "note": "A crash before the ack means redelivery: the same event is processed twice, so the handler must be idempotent", "ms": 0, "tone": "warn"},
+          {"at": "queue", "note": "A failing message is retried with exponential backoff (visibility timeout)", "ms": 1000, "tone": "warn"},
+          {"at": "dlq", "note": "After max retries it moves to the DLQ with its error for inspection and replay. The partition keeps flowing", "ms": 1, "tone": "bad"}
+        ]
+      }
+    ],
+    "deep": [
+      {
+        "title": "Delivery semantics and ordering",
+        "body": "At-most-once: ack before processing; a crash loses the message. At-least-once: ack after processing; a crash causes a duplicate. Exactly-once: not achievable end to end over an unreliable network; you build exactly-once effects from at-least-once delivery plus idempotent processing (a processed-ids table updated in the same transaction as the effect, or natural idempotency such as upsert by id). Kafka offers transactions and idempotent producers that make consume-transform-produce atomic within Kafka only.\n\nOrdering: a log partition is strictly ordered. Choose a partition key (user, order, device) so related events share a partition. Parallelism is bounded by partition count, and one slow message blocks the rest of its partition (head-of-line blocking). Retrying a failed message out of order breaks ordering, so for strict order either block and retry in place or park the key.\n\nConsumer groups: each partition is read by one consumer in the group; adding consumers beyond partitions gives no benefit. Rebalances pause consumption briefly.\n\nBackpressure and sizing: lag = latest offset − committed offset. Required consumers = arrival rate × processing time (Little's law: L = λW). If events arrive at 2,000/s and each takes 50 ms, you need about 100 concurrent processing slots. Alarm on lag and oldest-message age, not only queue length."
+      },
+      {
+        "title": "Queue vs log vs pub/sub",
+        "body": "Work queue (SQS, RabbitMQ): one consumer gets each message, then it is deleted. Good for distributing tasks. Features: visibility timeout, DLQ, delay, priorities.\n\nLog/stream (Kafka, Kinesis, Pulsar): messages are appended to a retained, partitioned log. Consumers track their own offsets, many groups can read independently, and you can replay. Good for event sourcing, pipelines, analytics, CDC.\n\nPub/sub (SNS, Redis pub/sub, Google Pub/Sub): fan out each message to all subscribers; Redis pub/sub is fire-and-forget with no persistence.\n\nCapacity math: Kafka throughput is limited by disk and network; a partition handles on the order of tens of MB/s; keep partition count a multiple of expected consumers and plan for growth since increasing partitions changes key-to-partition mapping.\n\nReliability: replicate partitions (replication factor 3, min.insync.replicas 2, producer acks=all) to survive a broker loss without data loss."
+      }
+    ],
+    "compare": [
+      {
+        "title": "Messaging systems",
+        "head": ["System", "Model", "Retention / replay", "Ordering", "Throughput", "Typical use"],
+        "rows": [
+          ["SQS standard", "Work queue", "Delete after ack", "None", "Very high", "Background jobs"],
+          ["SQS FIFO / RabbitMQ", "Work queue", "Delete after ack", "Per group / queue", "Moderate", "Ordered tasks, routing"],
+          ["Kafka / Kinesis", "Partitioned log", "Retained, replayable", "Per partition", "Very high", "Event streams, CDC, analytics"],
+          ["Redis streams", "Log in memory", "Limited by memory", "Per stream", "High", "Lightweight streaming"],
+          ["SNS / Pub/Sub", "Fan-out topics", "Short", "Optional", "High", "Broadcast notifications"]
+        ]
+      }
+    ]
+  }
+}

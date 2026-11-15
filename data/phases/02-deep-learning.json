@@ -1,0 +1,114 @@
+{
+  "id": "deep-learning",
+  "title": "Deep Learning and Transformers",
+  "tagline": "Understand the machinery under every LLM: from backprop to attention to scaling laws.",
+  "level": "core",
+  "color": "#a78bfa",
+  "topics": [
+    {
+      "id": "dl-basics",
+      "title": "Neural network fundamentals",
+      "summary": "Build and train networks in PyTorch until nothing about it is magic.",
+      "items": [
+        "Perceptron, MLP, activation functions (ReLU, GELU, SwiGLU)",
+        "Loss functions and their gradients",
+        "Initialization (Xavier/He) and normalization (BatchNorm, LayerNorm, RMSNorm)",
+        "PyTorch: tensors, autograd, nn.Module, DataLoader, training loops",
+        "Mixed precision (fp16, bf16, fp8), gradient accumulation",
+        "Checkpointing, reproducibility, seeding",
+        "Debugging training: loss curves, overfit-one-batch, gradient norms",
+        "CNNs and RNN/LSTM basics (why they were superseded)"
+      ],
+      "questions": ["Your loss is NaN after 200 steps. What do you check?", "LayerNorm vs BatchNorm: why do transformers use LayerNorm/RMSNorm?"],
+      "resources": ["Karpathy: Neural Networks Zero to Hero", "Dive into Deep Learning (d2l.ai)", "fast.ai Practical Deep Learning"]
+    },
+    {
+      "id": "transformers",
+      "title": "Transformer architecture",
+      "summary": "The most commonly probed topic in AI engineer interviews. Be able to implement it from scratch.",
+      "items": [
+        "Self-attention: Q, K, V, scaled dot-product, softmax, masking",
+        "Multi-head attention, why multiple heads",
+        "Positional encodings: sinusoidal, learned, RoPE, ALiBi",
+        "Feed-forward blocks, residual connections, pre-norm vs post-norm",
+        "Encoder-only (BERT), decoder-only (GPT), encoder-decoder (T5)",
+        "KV cache: what it stores and why it makes decoding fast",
+        "Attention variants: MQA, GQA, MLA, sliding window, sparse attention",
+        "FlashAttention: IO-aware exact attention",
+        "Mixture of Experts: routing, load balancing, why it saves compute",
+        "State-space models and hybrids (Mamba) at a conceptual level",
+        "Long-context techniques: RoPE scaling, YaRN, ring attention",
+        "Implement a GPT from scratch (nanoGPT)"
+      ],
+      "questions": [
+        "Why divide by sqrt(d_k) in attention?",
+        "Compute attention complexity in sequence length and explain the KV cache memory formula.",
+        "MQA vs GQA vs MHA: trade-offs for inference?",
+        "How does RoPE encode relative position?"
+      ],
+      "resources": ["Attention Is All You Need", "The Illustrated Transformer", "Karpathy: Let's build GPT", "FlashAttention paper"],
+      "concepts": [
+        {
+          "title": "KV cache memory math",
+          "body": "Per token, the cache stores 2 (K and V) x num_layers x num_kv_heads x head_dim x bytes_per_element. For a 70B-class model with 80 layers, 8 KV heads (GQA), head_dim 128 and fp16, that is 2 x 80 x 8 x 128 x 2 = ~327 KB per token. A 32k-token sequence costs ~10 GB, per request. This is why GQA, quantized KV cache and paged attention exist, and why serving capacity is bounded by memory rather than FLOPs."
+        },
+        {
+          "title": "Prefill vs decode",
+          "body": "Prefill processes the whole prompt in parallel and is compute-bound. Decode generates one token at a time, reads all weights and the whole KV cache per token, and is memory-bandwidth-bound. Time to first token (TTFT) is dominated by prefill, inter-token latency by decode. Optimizations differ: batching and chunked prefill help throughput; speculative decoding and quantization help decode latency."
+        }
+      ]
+    },
+    {
+      "id": "tokenization",
+      "title": "Tokenization and embeddings",
+      "summary": "Where text becomes numbers, and where many production bugs hide.",
+      "items": [
+        "BPE, WordPiece, SentencePiece, byte-level BPE",
+        "Vocabulary size trade-offs, multilingual cost differences",
+        "Tokenization pitfalls: whitespace, numbers, code, glitch tokens",
+        "Word2vec/GloVe intuition, contextual embeddings",
+        "Sentence embedding models, contrastive training, Matryoshka embeddings",
+        "Embedding dimensionality, normalization, similarity metrics",
+        "Multimodal embeddings (CLIP-style)"
+      ],
+      "questions": ["Why do LLMs struggle with counting letters in a word?", "How do you choose an embedding model for your domain?"],
+      "resources": ["Karpathy: Let's build the GPT Tokenizer", "HF tokenizers docs", "MTEB leaderboard"]
+    },
+    {
+      "id": "pretraining",
+      "title": "Pretraining and scaling",
+      "summary": "How base models are made. You may not train one, but you must reason about it.",
+      "items": [
+        "Next-token prediction objective, masked LM, span corruption",
+        "Scaling laws: Kaplan, Chinchilla, compute-optimal vs inference-optimal",
+        "Data pipelines: dedup, filtering, quality classifiers, decontamination",
+        "Data mixtures and curriculum, synthetic data",
+        "Distributed training: data, tensor, pipeline, sequence, expert parallelism",
+        "ZeRO / FSDP, activation checkpointing",
+        "Training stability: loss spikes, z-loss, precision issues",
+        "Hardware: GPU memory hierarchy, NVLink, InfiniBand, TPUs",
+        "Emergent abilities and the debate around them"
+      ],
+      "questions": ["Why train smaller models on more tokens than Chinchilla suggests?", "Explain FSDP vs tensor parallelism."],
+      "resources": ["Chinchilla paper", "Hugging Face Ultra-Scale Playbook", "Llama 3 paper"]
+    },
+    {
+      "id": "post-training",
+      "title": "Post-training and alignment",
+      "summary": "How base models become assistants and reasoners.",
+      "items": [
+        "Supervised fine-tuning (SFT) and instruction data",
+        "RLHF: reward model, PPO",
+        "DPO, IPO, KTO, ORPO preference optimization",
+        "RLAIF and constitutional approaches",
+        "Reinforcement learning with verifiable rewards (GRPO, RLVR) for reasoning",
+        "Reasoning models: chain-of-thought training, test-time compute",
+        "Reward hacking, sycophancy, mode collapse",
+        "Distillation and model merging",
+        "Parameter-efficient fine-tuning: LoRA, QLoRA, adapters, prefix tuning"
+      ],
+      "questions": ["DPO vs PPO-based RLHF: when and why?", "What is reward hacking? Give an example.", "How does GRPO remove the need for a value model?"],
+      "resources": ["InstructGPT paper", "DPO paper", "DeepSeek-R1 paper", "Hugging Face TRL docs"]
+    }
+  ]
+}

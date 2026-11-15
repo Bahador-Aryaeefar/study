@@ -1,0 +1,62 @@
+{
+  "id": "evals-observability",
+  "title": "Evals and Observability",
+  "tagline": "If you can't measure it, you can't ship it. The skill that most separates senior AI engineers.",
+  "level": "core",
+  "color": "#fb923c",
+  "topics": [
+    {
+      "id": "eval-design",
+      "title": "Eval design",
+      "summary": "Build evals before building features.",
+      "items": [
+        "Error analysis first: read traces, categorize failures, then build metrics",
+        "Golden datasets from production traffic and edge cases",
+        "Unit-style evals vs end-to-end vs trajectory evals",
+        "Code-based graders, LLM-as-judge, human review",
+        "Judge calibration: bias, position effects, agreement with humans",
+        "Pairwise comparison and Elo-style ranking",
+        "Evals for agents: task success, tool correctness, step efficiency, cost",
+        "Regression suites in CI, gating releases on evals",
+        "Benchmarks: MMLU, GPQA, SWE-bench, tau-bench, HLE, and their limits",
+        "Contamination and overfitting to your own eval set"
+      ],
+      "questions": ["How do you evaluate an agent whose correct output is open-ended?", "Your LLM judge disagrees with humans 30% of the time. What do you do?", "How do you prevent eval-set overfitting?"],
+      "resources": ["Hamel Husain and Shreya Shankar: evals course and blog", "Anthropic: Demystifying evals for agents", "OpenAI Evals", "Inspect AI"]
+    },
+    {
+      "id": "observability",
+      "title": "Tracing and observability",
+      "summary": "Debugging non-deterministic systems requires seeing every step.",
+      "items": [
+        "Traces, spans, sessions for LLM apps; OpenTelemetry GenAI conventions",
+        "Tools: Langfuse, LangSmith, Arize Phoenix, Braintrust, Helicone, W&B Weave",
+        "What to log: prompts, tool I/O, tokens, latency, cost, model version",
+        "PII handling in traces",
+        "Dashboards and alerts: latency, error rate, cost per task, quality scores",
+        "Online evals on sampled production traffic",
+        "Feedback collection and the data flywheel",
+        "Replay and counterfactual debugging",
+        "Metrics, logs, traces for the non-AI parts: Prometheus, Grafana, Loki"
+      ],
+      "questions": ["Production answers got worse last week. How do you find out why?", "What is the minimum you need to log to debug an agent?"],
+      "resources": ["Langfuse docs", "OpenTelemetry GenAI semantic conventions"]
+    },
+    {
+      "id": "experimentation",
+      "title": "Experimentation and release",
+      "summary": "Ship changes safely.",
+      "items": [
+        "Offline eval → shadow → canary → A/B",
+        "Prompt and model version management",
+        "Feature flags for AI behavior",
+        "Handling model deprecations and provider upgrades",
+        "Guarding against silent regressions when providers update models",
+        "Online metrics: task completion, user satisfaction, escalation rate",
+        "Statistical significance for noisy LLM metrics"
+      ],
+      "questions": ["The provider updates the model underneath you. How do you stay safe?"],
+      "resources": ["Eugene Yan: patterns for LLM systems", "Google SRE book: release engineering"]
+    }
+  ]
+}

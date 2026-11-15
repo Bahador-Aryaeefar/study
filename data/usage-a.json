@@ -1,0 +1,128 @@
+{
+  "request-path": {
+    "use": ["Opening every design: walk one request end to end so gaps (DNS, TLS, LB, auth, cache, DB) show up early.", "Debugging latency: attribute the milliseconds to each hop before optimizing anything."],
+    "avoid": ["Spending interview time on hops that are not the bottleneck (for example TLS details in a batch-pipeline design).", "Drawing every box in the happy path and never discussing what happens when one hop fails."],
+    "qa": [
+      {"q": "What happens when you type a URL and press enter?", "a": "DNS resolves the name (cached at browser, OS, resolver), the client opens TCP and negotiates TLS (about 1-2 round trips, fewer with TLS 1.3 and session resumption), the request hits a CDN or load balancer, which routes to a service. The service checks auth, reads a cache, falls back to the database, and returns a response that may be cached at the edge. Good answers attach rough latencies and name where each layer can fail."},
+      {"q": "Where would you add a cache on this path and why there?", "a": "As close to the consumer as correctness allows: CDN for static or public data, an application cache (Redis) for hot reads, and the database buffer pool already exists. Choose the layer by who shares the data and how stale it may be. Per-user data cannot live in a shared CDN, for example."}
+    ]
+  },
+  "estimator": {
+    "use": ["Right after requirements: size QPS, storage and bandwidth to decide whether you need sharding, a cache or a queue at all.", "To justify a number you quote (for example why one Postgres node is enough for 200 QPS)."],
+    "avoid": ["Computing to three significant digits; order of magnitude is the goal.", "Estimating without stating assumptions (DAU, read/write ratio, average object size, peak factor)."],
+    "qa": [
+      {"q": "Estimate storage for 100M users each posting 2 photos per day.", "a": "200M photos/day. At about 2 MB each that is 400 TB/day, roughly 146 PB/year before replication. State thumbnails and multiple resolutions (about 1.3-2x), triple replication or erasure coding (1.4-1.5x overhead), and that lifecycle tiers move cold photos to cheaper storage. Then say the metadata is tiny by comparison and lives in a database."},
+      {"q": "How do you convert daily active users to peak QPS?", "a": "Requests per day divided by 86,400 gives average QPS, then multiply by a peak factor of 2-5 depending on how spiky the product is. Example: 10M DAU doing 20 reads each is 200M/day, about 2,300 average QPS and roughly 7-10k at peak."}
+    ]
+  },
+  "networking-essentials": {
+    "use": ["Choosing a protocol per hop: HTTP/REST for public APIs, gRPC between services, WebSocket or SSE for push, UDP-based transports (QUIC, WebRTC) for latency-critical media.", "Explaining tail latency, connection reuse and why chatty services hurt."],
+    "avoid": ["Using WebSockets when polling or SSE is enough; persistent connections cost memory and complicate load balancing.", "Assuming the network is reliable, in-order or free of partitions."],
+    "qa": [
+      {"q": "TCP vs UDP: when would you pick UDP?", "a": "UDP when old data is useless and retransmission is harmful: live audio/video, game state, some telemetry. You then add only the reliability you need at the application layer. TCP when you need ordered, reliable delivery and congestion control for you, which is most request/response traffic."},
+      {"q": "L4 vs L7 load balancing?", "a": "L4 balances connections by IP and port: fast, cheap, protocol agnostic. L7 understands HTTP, so it can route by path or header, terminate TLS, retry and do canaries, at higher CPU cost. Many systems use L4 in front of an L7 tier."}
+    ]
+  },
+  "api-design": {
+    "use": ["REST for public, resource-oriented APIs with caching needs.", "gRPC for internal service calls needing strong contracts and low latency.", "GraphQL when many clients need different shapes of the same graph and you can afford resolver complexity.", "Idempotency keys on any non-idempotent write that clients may retry."],
+    "avoid": ["GraphQL for simple CRUD or when you cannot control query cost; add depth limits and cost analysis if you do use it.", "Offset pagination on large, changing datasets; use cursors.", "Breaking changes without versioning and a deprecation plan."],
+    "qa": [
+      {"q": "How do you paginate a feed that gets new items constantly?", "a": "Cursor (keyset) pagination on a stable sort key such as (created_at, id). Offset pagination skips or repeats items when rows are inserted and gets slower with depth. Return an opaque cursor so you can change internals later."},
+      {"q": "How do you make a payment endpoint safe to retry?", "a": "Client sends an idempotency key. Server stores key, request hash and result in the same transaction as the side effect, and returns the stored result on a repeat. Reject the same key with a different payload. Expire keys after a window, such as 24 hours."}
+    ]
+  },
+  "data-modeling": {
+    "use": ["Relational model when you need transactions, joins and flexible queries over structured data (most products start here).", "Document model for aggregates read and written together with varying shape.", "Wide-column or key-value for very high write throughput and known access patterns.", "Denormalize when a read path must avoid joins and you can tolerate maintaining copies."],
+    "avoid": ["Picking NoSQL because it sounds scalable; one well-indexed Postgres node handles far more than most candidates assume.", "Designing the schema before listing the queries.", "Denormalizing without a plan for keeping copies consistent."],
+    "qa": [
+      {"q": "SQL or NoSQL for this system?", "a": "Start from access patterns and consistency needs, not fashion. Need multi-row transactions, ad-hoc queries, strong constraints: relational. Need massive horizontal write scale with key-based access and can accept limited transactions: a partitioned store like Cassandra or DynamoDB. Say what you give up either way, and that you can mix them (relational source of truth plus a search index)."},
+      {"q": "How do you model many-to-many in a document store?", "a": "Embed when the related set is small and read together; reference by id when it is large or shared, and accept an application-side join or a second query. Duplicate small immutable fields (like a user name on a comment) if reads dominate, with a background job to repair them."}
+    ]
+  },
+  "indexing": {
+    "use": ["B-tree indexes for equality and range lookups on columns you filter and sort by.", "Composite indexes ordered by equality columns first, then range, then sort.", "Covering indexes when a hot query can be answered from the index alone.", "Inverted indexes for text search; geospatial indexes for proximity."],
+    "avoid": ["Indexing every column; each index slows writes and costs memory and disk.", "Low-selectivity indexes (a boolean flag) on big tables unless partial.", "Assuming an index is used; check the plan, because functions on the column or type mismatches can bypass it."],
+    "qa": [
+      {"q": "Why can an index make a system slower?", "a": "Every insert and update must maintain every index, so write-heavy tables pay per index. Indexes also compete for memory with the working set. Remove unused indexes and measure with the planner and index usage stats."},
+      {"q": "Order the columns of a composite index for WHERE a = ? AND b > ? ORDER BY c.", "a": "Equality column first (a), then the range column (b). Note the sort on c cannot use the index order after a range on b, so either accept a sort, or index (a, c) if the range filter is selective enough to apply afterwards. Mention checking EXPLAIN."}
+    ]
+  },
+  "cache": {
+    "use": ["Read-heavy data with tolerable staleness: profiles, catalogs, config, rendered pages.", "Expensive computations or remote calls with repeating inputs, including LLM responses and embeddings.", "Cache-aside as the default; write-through when readers must see fresh data right after a write."],
+    "avoid": ["Data that must be strictly consistent on every read (balances, inventory at checkout).", "Highly unique keys with no reuse: hit rate will be near zero and you pay for the memory.", "Using the cache as the only copy of data, or designing a system that cannot survive a cold cache."],
+    "qa": [
+      {"q": "How do you keep cache and database consistent?", "a": "You cannot make it perfectly atomic without distributed transactions, so pick a bounded-staleness story: short TTLs plus delete-on-write, or invalidation driven by change events (CDC). On write, update the database first, then delete the key (not set it) to avoid racing writers leaving stale values. Accept a small window of staleness and say how long it is."},
+      {"q": "A celebrity profile key expires and the database melts. Fix it.", "a": "Single-flight so one request refills while others wait or get stale data, jitter the TTL so keys do not expire together, refresh ahead of expiry for known hot keys, and keep a small per-instance cache in front of Redis for the hottest keys."},
+      {"q": "Which eviction policy and why?", "a": "LRU is a safe default for recency-driven access; LFU (or TinyLFU) when popularity is stable and you want to resist scans polluting the cache. Mention sizing from working-set estimates and monitoring hit rate and evictions."}
+    ]
+  },
+  "consistent-hash": {
+    "use": ["Distributed caches and sharded stores where nodes join and leave and you want to move only about 1/N of keys.", "Sticky routing of a key to a node, such as per-user or per-document affinity.", "Virtual nodes to even out load and handle heterogeneous machines."],
+    "avoid": ["Small fixed clusters that never change; simple modulo or a lookup table is easier.", "Range queries across shards; hashing destroys ordering, so use range partitioning instead.", "Ignoring hot keys: hashing balances keys, not traffic."],
+    "qa": [
+      {"q": "Why not hash(key) mod N?", "a": "When N changes almost every key maps to a different node, causing a mass cache miss or a huge data migration. A ring moves only the keys between the changed node and its neighbor."},
+      {"q": "What do virtual nodes fix?", "a": "With few physical nodes the arcs are uneven, so some nodes own far more keys. Giving each node many points on the ring evens the distribution, spreads a failed node's load across many peers, and lets bigger machines own more points."},
+      {"q": "A single key is extremely hot. Does consistent hashing help?", "a": "No. All requests for that key hit one node. Replicate hot keys to several nodes, add a local cache, or split the key (for example counters sharded into sub-keys)."}
+    ]
+  },
+  "replication": {
+    "use": ["Read scaling and availability: leader with read replicas for typical OLTP.", "Multi-leader for multi-region writes where conflicts are rare or mergeable.", "Leaderless (Dynamo style) for always-writable systems with tunable consistency.", "Synchronous replication to at least one follower when you cannot lose acknowledged writes."],
+    "avoid": ["Reading your own writes from an async replica without a plan (route to the leader or use session stickiness).", "Multi-leader when you cannot define a conflict resolution rule.", "Assuming replicas are backups; a bad write replicates instantly, so you still need point-in-time backups."],
+    "qa": [
+      {"q": "How do you handle replica lag?", "a": "Measure it and alarm. For read-your-writes, send a user's reads to the leader for a short period after they write, or pass a log position and read from a replica that has caught up. For monotonic reads, pin a user to one replica. Be explicit that feeds or counters can tolerate lag while checkout cannot."},
+      {"q": "Leader dies. What happens?", "a": "Detect via missed heartbeats, elect a new leader through consensus or an orchestrator, promote the most up-to-date replica, redirect clients, and fence the old leader so it cannot accept writes if it returns (split brain). With async replication you may lose the tail of the log; say whether that is acceptable."},
+      {"q": "Sync vs async replication?", "a": "Sync blocks the write until followers confirm: no data loss on failover but higher latency and availability depends on followers. Async is fast but can lose recent writes. A common compromise is semi-sync: one synchronous follower, the rest async."}
+    ]
+  },
+  "cap-theorem": {
+    "use": ["Explaining what must give during a network partition: reject some requests (CP) or serve possibly stale data (AP).", "PACELC to describe the everyday trade-off too: even without a partition you choose latency vs consistency."],
+    "avoid": ["Labeling a whole database 'CP' or 'AP' as if it were one setting; most are tunable per operation.", "Using CAP to justify choices unrelated to partitions."],
+    "qa": [
+      {"q": "Is a single-node database CP or AP?", "a": "CAP is about distributed systems with partitions; a single node has no partition to tolerate, so the question mostly does not apply. The useful discussion starts with replication and what each operation does when replicas cannot talk."},
+      {"q": "Give a feature where you would choose availability over consistency.", "a": "A like counter or a social feed: showing a slightly stale count is fine and an error is worse. Contrast with account balance or seat reservation where you reject or queue requests during a partition rather than risk double-spending."}
+    ]
+  },
+  "quorum": {
+    "use": ["Tunable consistency in leaderless stores: choose R and W so that R + W > N for read-your-latest-write.", "W = 1, R = N style settings to favor fast writes or fast reads."],
+    "avoid": ["Treating R + W > N as full linearizability; sloppy quorums, clock-based last-write-wins and concurrent writes can still return stale or lost data.", "Large N with high W when latency matters; the slowest replica in the quorum sets your latency."],
+    "qa": [
+      {"q": "N=3: what R and W would you pick?", "a": "R=2, W=2 is the balanced default: quorums overlap, tolerates one node down for both reads and writes. W=3, R=1 gives fast reads but writes fail if any node is down. W=1, R=1 is fastest but can read stale data."},
+      {"q": "How are conflicting writes resolved?", "a": "Last-write-wins by timestamp (simple, can lose data), version vectors to detect concurrency and keep siblings for the application to merge, or CRDTs for data types that merge automatically (counters, sets). Read repair and anti-entropy converge replicas afterward."}
+    ]
+  },
+  "raft": {
+    "use": ["Anything that needs a single agreed order or a single leader: metadata stores, lock services, configuration, leader election (etcd, ZooKeeper, Consul).", "Small clusters (3 or 5 nodes) holding critical coordination state."],
+    "avoid": ["Putting high-volume data through a consensus group; throughput is limited by the leader and a majority round trip.", "Spanning consensus groups over high-latency regions unless you accept the commit latency.", "Rolling your own consensus; use a proven implementation."],
+    "qa": [
+      {"q": "Why odd cluster sizes?", "a": "A majority is needed to commit. 3 nodes tolerate 1 failure, 5 tolerate 2; 4 nodes still tolerate only 1, so the extra node adds cost without more fault tolerance."},
+      {"q": "What stops two leaders at once?", "a": "Terms: a node only votes once per term and a leader needs a majority, so two leaders cannot be elected in the same term. A stale leader discovers a higher term and steps down; writes it tries need majority acks it will not get."},
+      {"q": "What does a client see during an election?", "a": "Writes and linearizable reads pause until a new leader is elected, typically hundreds of milliseconds to a few seconds. Clients should retry with backoff and idempotency."}
+    ]
+  },
+  "bloom": {
+    "use": ["Cheap 'definitely not present' checks to skip disk or network lookups: LSM-tree SSTables, cache penetration protection, deduplication pre-checks.", "Very large sets where memory matters more than exactness."],
+    "avoid": ["When you need deletes (use a counting or cuckoo filter) or exact membership.", "When false positives are unacceptable and there is no fallback check.", "Sizing it smaller than the expected number of items; the false-positive rate climbs fast."],
+    "qa": [
+      {"q": "What is the false-positive rate and how do you set it?", "a": "About (1 - e^(-kn/m))^k for m bits, n items, k hash functions. Choose m and k from the target rate: roughly 10 bits per item with 7 hashes gives about 1%. There are no false negatives."},
+      {"q": "Where would you use one in a design?", "a": "In front of an expensive lookup for keys that usually do not exist: a crawler's seen-URL check, a username-taken precheck, or avoiding database hits from cache-penetration attacks. A positive answer still gets verified against the source of truth."}
+    ]
+  },
+  "queues": {
+    "use": ["Decouple producers from consumers and absorb bursts (smooth a 10x spike into steady processing).", "Background work: emails, video encoding, embeddings, webhooks, agent tasks.", "Logs/streams (Kafka) when multiple consumers need replay, ordering per key, and high throughput."],
+    "avoid": ["Work the user needs the result of immediately and cannot wait on; a queue adds latency and complexity.", "Assuming exactly-once delivery; design consumers to be idempotent.", "Unbounded queues without backpressure or alarms on lag and age."],
+    "qa": [
+      {"q": "Queue vs stream (SQS/RabbitMQ vs Kafka)?", "a": "A queue delivers each message to one consumer and removes it: good for task distribution. A log retains messages for a period, lets many consumer groups read independently, supports replay, and orders per partition: good for event streams and pipelines. Choose by whether you need replay and fan-out."},
+      {"q": "How do you get ordering?", "a": "Partition by a key (user id, order id) so all events for the key go to one partition and are consumed in order by one consumer. Global ordering limits you to one partition, so usually avoid needing it."},
+      {"q": "What do you do with poison messages?", "a": "Limit retries with backoff, then move the message to a dead-letter queue with the error, alert, and provide a tool to inspect and replay after the fix."},
+      {"q": "Is exactly-once real?", "a": "Not across arbitrary systems. You get at-least-once delivery plus idempotent processing (dedup keys, transactional outbox, or Kafka transactions within Kafka), which is effectively once."}
+    ]
+  },
+  "fanout": {
+    "use": ["Fan-out on write (precompute timelines) when reads vastly outnumber writes and followers per author are moderate.", "Fan-out on read for authors with huge audiences, merging at read time.", "A hybrid: push for normal users, pull for celebrities."],
+    "avoid": ["Pure fan-out on write for accounts with tens of millions of followers; one post becomes tens of millions of writes.", "Pure fan-out on read when the read path must be very fast for everyone; merging many sources on every request is slow."],
+    "qa": [
+      {"q": "Design the home timeline.", "a": "Hybrid. On post, push the post id into followers' timelines (a list in Redis or a wide-column row) for normal authors, asynchronously via a queue. Celebrities are excluded from the push; at read time merge the precomputed timeline with recent posts from followed celebrities, then rank. Store post bodies once and hydrate by id. Mention inactive-user skipping and timeline length caps."},
+      {"q": "What if a user unfollows or deletes a post?", "a": "Deletes write a tombstone and readers filter at hydrate time; unfollow can lazily filter on read and clean up in the background. Eventual consistency is acceptable here."}
+    ]
+  }
+}

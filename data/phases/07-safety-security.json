@@ -1,0 +1,63 @@
+{
+  "id": "safety-security",
+  "title": "Safety, Security and Governance",
+  "tagline": "Agents act in the world. Treat them as untrusted, privileged software.",
+  "level": "advanced",
+  "color": "#f87171",
+  "topics": [
+    {
+      "id": "agent-security",
+      "title": "Agent and LLM security",
+      "summary": "OWASP LLM Top 10 and beyond.",
+      "items": [
+        "Prompt injection: direct and indirect (via tools, web, documents)",
+        "The lethal trifecta: private data + untrusted content + external communication",
+        "Data exfiltration paths: markdown images, links, tool calls",
+        "Tool poisoning and malicious MCP servers; supply chain risk",
+        "Confused deputy and privilege escalation in agents",
+        "Least privilege, scoped credentials, per-user OAuth delegation",
+        "Sandboxing code execution and network egress controls",
+        "Secrets management: never in prompts, vaults, rotation",
+        "Rate limiting, abuse, denial-of-wallet attacks",
+        "Model extraction, training data leakage, membership inference",
+        "Threat modeling an agent system (STRIDE adapted)"
+      ],
+      "questions": ["Explain indirect prompt injection and three layered defenses.", "Threat-model an email-reading agent that can also send emails."],
+      "resources": ["OWASP Top 10 for LLM Applications", "Simon Willison on prompt injection", "Google CaMeL paper"]
+    },
+    {
+      "id": "guardrails",
+      "title": "Guardrails and content safety",
+      "summary": "Defense in depth around the model.",
+      "items": [
+        "Input and output classifiers, moderation APIs",
+        "Policy enforcement outside the model (deterministic checks)",
+        "Structured action validation before execution",
+        "Human approval for high-risk actions",
+        "PII detection and redaction",
+        "Jailbreak taxonomy and red teaming",
+        "Automated red teaming: garak, PyRIT, promptfoo",
+        "Refusal calibration: over-refusal vs under-refusal"
+      ],
+      "questions": ["Why can't you rely on the system prompt alone for security?"],
+      "resources": ["NeMo Guardrails", "Llama Guard", "promptfoo docs"]
+    },
+    {
+      "id": "governance",
+      "title": "Privacy, compliance and responsible AI",
+      "summary": "Often asked in senior loops at enterprise-facing companies.",
+      "items": [
+        "GDPR, CCPA basics: consent, deletion, data residency",
+        "SOC 2, ISO 27001, HIPAA considerations for AI products",
+        "EU AI Act risk tiers and obligations",
+        "Data retention and zero-retention provider options",
+        "Audit logs and explainability of agent actions",
+        "Bias and fairness evaluation",
+        "Model cards, system cards, documentation",
+        "Responsible scaling and alignment basics: reward hacking, deception, oversight"
+      ],
+      "questions": ["A customer in the EU asks for deletion. What must happen to embeddings and logs?"],
+      "resources": ["NIST AI RMF", "EU AI Act summaries", "Anthropic and OpenAI system cards"]
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "id": "mlops",
+  "title": "MLOps and LLMOps",
+  "tagline": "Take models and agents from notebook to reliable, governed production.",
+  "level": "advanced",
+  "color": "#c084fc",
+  "topics": [
+    {
+      "id": "ml-lifecycle",
+      "title": "ML lifecycle and tooling",
+      "summary": "Reproducibility, lineage and automation.",
+      "items": [
+        "Experiment tracking: MLflow, Weights & Biases, Neptune",
+        "Data and model versioning: DVC, lakeFS, model registries",
+        "Training pipelines: Kubeflow, Metaflow, Flyte, SageMaker Pipelines, Vertex Pipelines",
+        "Reproducible environments and containers for training",
+        "Hyperparameter search: Optuna, Ray Tune",
+        "Distributed training orchestration: Ray, Slurm, torchrun, Kubernetes jobs",
+        "Checkpoints, resumption and fault tolerance for long jobs",
+        "Maturity levels (Google MLOps levels 0–2)"
+      ],
+      "questions": ["Reproduce a model trained 6 months ago. What do you need?", "How do you recover a multi-day training job after node failure?"],
+      "resources": ["Designing Machine Learning Systems (Huyen)", "Made With ML", "MLOps Zoomcamp"]
+    },
+    {
+      "id": "model-serving",
+      "title": "Model serving platforms",
+      "summary": "Online, batch and streaming inference at scale.",
+      "items": [
+        "Online vs batch vs streaming inference",
+        "KServe, Seldon, BentoML, Ray Serve, Triton",
+        "LLM serving: vLLM / SGLang on Kubernetes, LoRA multiplexing",
+        "Model gateway: routing, auth, quotas, fallbacks, observability",
+        "Canary and shadow deployments for models",
+        "Autoscaling on GPU metrics and queue depth; scale-to-zero",
+        "Model loading optimization: weights streaming, caching on local NVMe",
+        "Multi-model and multi-tenant serving",
+        "Hybrid: self-hosted + API providers and failover"
+      ],
+      "questions": ["Design an internal LLM platform serving 20 teams.", "How do you deploy a new fine-tuned model with zero downtime and rollback?"],
+      "resources": ["KServe docs", "vLLM production-stack", "Ray Serve docs"]
+    },
+    {
+      "id": "monitoring-drift",
+      "title": "Monitoring, drift and feedback loops",
+      "summary": "Models rot. Detect and respond.",
+      "items": [
+        "Data drift, concept drift, prediction drift detection (PSI, KS, embeddings drift)",
+        "Performance monitoring with delayed labels",
+        "Monitoring LLM quality in production: judges, user signals, embedding clusters",
+        "Retraining triggers and continuous training",
+        "Feedback loops, data flywheels and their risks (model collapse, bias reinforcement)",
+        "Tools: Evidently, WhyLabs, Arize, Fiddler"
+      ],
+      "questions": ["How do you know the model is degrading when you have no labels?"],
+      "resources": ["Evidently AI docs", "Chip Huyen: Monitoring ML systems"]
+    },
+    {
+      "id": "llmops",
+      "title": "LLMOps specifics",
+      "summary": "What is different when the model is a foundation model or an agent.",
+      "items": [
+        "Prompt, tool and config registries with versioning",
+        "Eval-driven development loop in CI",
+        "Cost governance: token budgets, per-tenant attribution, caching",
+        "Provider abstraction and model migration playbooks",
+        "Vector index lifecycle: re-embedding, blue-green indexes",
+        "Dataset flywheel: traces → curated eval/fine-tune data",
+        "Agent deployment: sandboxes, secrets, long-running workers",
+        "Platform teams: golden paths, internal AI gateways, self-service evals"
+      ],
+      "questions": ["You need to migrate from model A to model B across 30 prompts and 5 agents. What is the plan?", "How do you re-embed 500M documents without downtime?"],
+      "resources": ["Chip Huyen: AI Engineering", "Eugene Yan blog", "Databricks and Google LLMOps guides"]
+    },
+    {
+      "id": "gpu-infra",
+      "title": "GPU and ML infrastructure",
+      "summary": "Where cost and performance live.",
+      "items": [
+        "GPU architecture: SMs, tensor cores, HBM, memory hierarchy",
+        "CUDA basics, kernels, Triton language, torch.compile",
+        "Profiling: Nsight, PyTorch profiler, roofline model",
+        "Interconnects: NVLink, NVSwitch, InfiniBand, RDMA, NCCL collectives",
+        "Cluster scheduling: Slurm vs Kubernetes, gang scheduling (Kueue, Volcano)",
+        "Utilization, MFU, goodput, straggler detection",
+        "Capacity planning and cost per token/step"
+      ],
+      "questions": ["Your GPUs are at 40% utilization. How do you find out why?", "Explain all-reduce and why bandwidth matters."],
+      "resources": ["Making Deep Learning Go Brrrr", "How to Scale Your Model (JAX scaling book)", "NVIDIA developer blogs"]
+    }
+  ]
+}
