@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useProgress } from "@/lib/progress";
 import { conceptsFor, problems } from "@/lib/concepts";
-import { LEVEL_LABEL, PHASE_META, Phase, Topic, phases } from "@/lib/roadmap";
+import { LEVEL_LABEL, PHASE_META, Phase, TRACKS, Topic, TrackId, phasesOf } from "@/lib/roadmap";
 import Journey from "./Journey";
 import { CodeBlock, Rich } from "./Rich";
 
@@ -65,7 +65,9 @@ function Check({ checked, onChange, children, className }: { checked: boolean; o
   );
 }
 
-export default function Roadmap() {
+export default function Roadmap({ track = "ai" }: { track?: TrackId }) {
+  const phases = phasesOf(track);
+  const T = TRACKS[track];
   const { progress, done, saveState, toggle, setMany, setNote, replace, reset: resetAll } = useProgress();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -75,7 +77,7 @@ export default function Roadmap() {
   const [cpTab, setCpTab] = useState<Record<string, CpTab>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const stats = useMemo(() => phases.map((p) => phaseStats(p, done)), [done]);
+  const stats = useMemo(() => phases.map((p) => phaseStats(p, done)), [done, phases]);
   const fractions = useMemo(() => stats.map((s) => (s.total ? s.done / s.total : 0)), [stats]);
 
   const totals = useMemo(() => {
@@ -94,12 +96,12 @@ export default function Roadmap() {
     if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1);
     while (days.has(d.toISOString().slice(0, 10))) { n++; d.setDate(d.getDate() - 1); }
     return n;
-  }, [done]);
+  }, [done, phases]);
 
   const today = useMemo(() => {
     const k = new Date().toISOString().slice(0, 10);
     return Object.values(done).filter((iso) => iso.startsWith(k)).length;
-  }, [done]);
+  }, [done, phases]);
 
   const next = useMemo(() => {
     for (const p of phases) {
@@ -111,7 +113,7 @@ export default function Roadmap() {
       if (cp) return { phase: p, topic: null, text: cp.text };
     }
     return null;
-  }, [done]);
+  }, [done, phases]);
 
   const q = query.trim().toLowerCase();
 
@@ -129,7 +131,7 @@ export default function Roadmap() {
         return { phase: p, topics };
       })
       .filter((x) => x.topics.length > 0);
-  }, [done, filter, q]);
+  }, [done, filter, q, phases]);
 
   const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) =>
     setter((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -178,9 +180,9 @@ export default function Roadmap() {
       <header className="hero">
         <div className="hero-text">
           <p className="eyebrow"><span className="pip" /> Your study platform</p>
-          <h1>Road to <span className="grad">Senior AI &amp; Agent Engineer</span></h1>
+          <h1>{T.title[0]} <span className="grad">{T.title[1]}</span></h1>
           <p className="lede">
-            {phases.length} phases · {totals.topics} topics · {totals.total} skills · {totals.qTotal} interview questions. Every phase ends with a checkpoint: what you must know, what you must build, and the configs you should be able to write.
+            {phases.length} phases · {totals.topics} topics · {totals.total} skills · {totals.qTotal} interview questions. {T.lede}
           </p>
           <div className="actions">
             <button className="btn primary" onClick={goNext} disabled={!next}>{next ? "Continue where I left off →" : "All done 🎉"}</button>
@@ -398,7 +400,7 @@ export default function Roadmap() {
         })}
         <div className="finish">
           <div className="flag-big">🏁</div>
-          <div><b>Senior AI &amp; Agent Engineer</b><span>You made it. Go get the offer.</span></div>
+          <div><b>{T.finish[0]}</b><span>{T.finish[1]}</span></div>
         </div>
       </div>
 

@@ -1,0 +1,790 @@
+[
+ {
+  "id": "dsa-method",
+  "icon": "🧭",
+  "short": "Method",
+  "title": "Test Method, Edge Cases and Big-O",
+  "tagline": "Before Thursday. How to read, plan, test and submit so hidden test cases don't catch you.",
+  "level": "foundation",
+  "color": "",
+  "topics": [
+   {
+    "id": "reading",
+    "title": "Reading the problem",
+    "summary": "Most failed submissions are misread problems, not bad algorithms.",
+    "items": [
+     "Read the statement twice and restate it in one sentence",
+     "Write the input and output types and the constraints (n up to?)",
+     "Work through the given example by hand before coding",
+     "Spot the operation: is it `a / r` or `a - r`, contiguous or any subset, indices or values?",
+     "Ask: what should happen on empty input? (if the statement is silent, follow the examples)"
+    ],
+    "questions": [
+     "Explain your plan in 2 sentences before writing any code",
+     "Given n up to 10^5, which complexities are acceptable?"
+    ],
+    "resources": [
+     "HackerRank sample test",
+     "Your DSA_Notes.md test routine"
+    ],
+    "concepts": [
+     {
+      "title": "Constraints tell you the algorithm",
+      "body": "The limit on n is a hint about the intended complexity. Roughly 10^7 to 10^8 simple operations run in a second.\n- n up to 20: O(2^n) is fine (try all subsets)\n- n up to 500: O(n^3)\n- n up to 5,000: O(n^2)\n- n up to 10^5 or 10^6: O(n log n) or O(n). Sorting, hashing, two pointers, sliding window\n- n up to 10^9 or more: O(log n) or O(1). Binary search or maths\nIf your idea is O(n^2) and n is 10^5, it will time out on the hidden tests even if the samples pass."
+     }
+    ]
+   },
+   {
+    "id": "edge-cases",
+    "title": "Edge cases and hidden tests",
+    "summary": "Hidden tests are mostly edge cases. Write yours first.",
+    "items": [
+     "Before coding, write 3 to 5 tiny inputs with expected outputs",
+     "Always try: empty, one element, all equal, duplicates, negatives, zero",
+     "Try sorted and reverse-sorted input",
+     "Check first and last index (off-by-one) and window boundaries",
+     "Check the largest input mentally for time and for integer size",
+     "After a failed hidden test, re-read the statement before changing code"
+    ],
+    "questions": [
+     "What edge cases would you test for 'find the second largest number'?",
+     "Your code passes samples but fails 4 hidden tests. What do you do, in order?"
+    ],
+    "resources": [
+     "LeetCode problem 'Discuss' tabs for edge cases"
+    ],
+    "concepts": [
+     {
+      "title": "The edge case checklist in practice",
+      "body": "Problem: return the second largest distinct value in a list, or -1 if there is none.\nCases to write before coding:\n- [] → -1 (empty)\n- [7] → -1 (one item)\n- [3, 3, 3] → -1 (all equal, no distinct second)\n- [5, 1, 5, 2] → 2 (duplicates of the max)\n- [-4, -9] → -9 (negatives)\n```python\ndef second_largest(a):\n    first = second = None\n    for x in a:\n        if first is None or x > first:\n            first, second = x, first\n        elif x != first and (second is None or x > second):\n            second = x\n    return -1 if second is None else second\n```\nNote: returning -1 is ambiguous if -1 can be a real answer. Mention that out loud; interviewers like it."
+     }
+    ]
+   },
+   {
+    "id": "complexity",
+    "title": "Big-O you must know cold",
+    "summary": "Know the cost of every built-in operation you use.",
+    "items": [
+     "list: index O(1), append O(1), pop() O(1), pop(0) and insert(0) O(n), `x in list` O(n)",
+     "dict and set: get, add, `in` O(1) on average",
+     "sort / sorted: O(n log n); string concatenation in a loop: O(n^2), use ''.join",
+     "heapq push/pop O(log n), heapify O(n); deque append/popleft O(1)",
+     "Slicing a[i:j] copies: O(j - i)",
+     "Recursion depth limit in Python is about 1000: use iteration for deep inputs"
+    ],
+    "questions": [
+     "Why is `if x in my_list` inside a loop a problem, and what is the fix?",
+     "What is the time and space complexity of your solution?"
+    ],
+    "resources": [
+     "Python TimeComplexity wiki",
+     "Big-O cheat sheet"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "python-tools",
+    "title": "Python tools for speed",
+    "summary": "The standard library does half the work.",
+    "items": [
+     "collections.Counter, defaultdict(int), defaultdict(list), deque",
+     "zip(a, a[1:]) for neighbours; enumerate for index and value",
+     "sorted(x, key=lambda t: (t[1], -t[0])) for multi-key sorts",
+     "bisect_left / bisect_right for binary search in a sorted list",
+     "heapq (min-heap; push -x for a max-heap)",
+     "itertools: accumulate (prefix sums), combinations, permutations, product"
+    ],
+    "questions": [
+     "Write a one-liner that counts how many values appear exactly twice"
+    ],
+    "resources": [
+     "Python docs: collections, heapq, bisect, itertools"
+    ],
+    "concepts": [
+     {
+      "title": "Templates to type without thinking",
+      "body": "```python\nfrom collections import Counter, defaultdict, deque\nfrom itertools import accumulate\nimport heapq, bisect\n\nfreq = Counter(arr)                       # value -> count\ngroups = defaultdict(list)                # key -> list\nprefix = [0, *accumulate(arr)]            # sum(arr[i:j]) == prefix[j] - prefix[i]\npairs = list(zip(arr, arr[1:]))           # neighbours\ni = bisect.bisect_left(sorted_arr, x)     # first index with value >= x\nheap = []; heapq.heappush(heap, (dist, node)); d, n = heapq.heappop(heap)\nq = deque([start]); q.append(x); q.popleft()\n```"
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "The edge case list: empty, one, all equal, duplicates, negatives, zero, sorted, max size",
+    "Which complexity fits n = 10^5 and why",
+    "The cost of `in` on a list vs a set"
+   ],
+   "mustDo": [
+    "Do the HackerRank sample test end to end, timed",
+    "Solve one easy problem writing edge cases BEFORE the code"
+   ],
+   "configs": [
+    {
+     "title": "Submission routine",
+     "lang": "text",
+     "note": "Do this every time, even in practice.",
+     "code": "1. Read twice. Restate in one sentence.\n2. Note constraints -> target complexity.\n3. Write 3-5 edge cases with expected outputs.\n4. Brute force idea first (say it), then optimise.\n5. Code. Run the samples. Run your edge cases.\n6. Re-read the statement. Submit."
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-puzzles",
+  "icon": "🧠",
+  "short": "Puzzles",
+  "title": "Logic Puzzles and Maths for Coding",
+  "tagline": "Before Thursday. The recruiter mentioned puzzles: pattern spotting, quick maths and number tricks.",
+  "level": "foundation",
+  "color": "",
+  "topics": [
+   {
+    "id": "logic",
+    "title": "Logic and pattern puzzles",
+    "summary": "Slow down, write it out, check every option.",
+    "items": [
+     "Number sequences: check differences, ratios, squares/cubes, alternating patterns, Fibonacci-like sums",
+     "Letter sequences: convert to positions (A=1 ... Z=26) and look at the gaps",
+     "Truth-teller / liar puzzles: assume one case, follow it until it contradicts",
+     "Ordering puzzles (who sits where): draw a grid and fill fixed facts first",
+     "Odd one out: find the rule most items share",
+     "Eliminate wrong multiple-choice options instead of solving from scratch"
+    ],
+    "questions": [
+     "Next number: 2, 6, 12, 20, 30, ?",
+     "Next number: 1, 1, 2, 3, 5, 8, ?",
+     "Next: 3, 9, 27, 81, ?",
+     "Next letters: A, C, F, J, O, ?"
+    ],
+    "resources": [
+     "CCAT-style practice questions",
+     "Brilliant.org logic puzzles"
+    ],
+    "concepts": [
+     {
+      "title": "Answers and the trick behind each",
+      "body": "- 2, 6, 12, 20, 30 → 42. Differences 4, 6, 8, 10, 12. (Also n x (n+1).)\n- 1, 1, 2, 3, 5, 8 → 13. Each is the sum of the previous two.\n- 3, 9, 27, 81 → 243. Multiply by 3.\n- A, C, F, J, O → U. Positions 1, 3, 6, 10, 15, 21: gaps grow by 1.\nFirst thing to try on any sequence: write the differences underneath. If those don't help, try ratios, then squares."
+     }
+    ]
+   },
+   {
+    "id": "brain-teasers",
+    "title": "Classic brain teasers",
+    "summary": "The well-known ones come up again and again.",
+    "items": [
+     "Weighing: find the heavier ball among 8 with 2 weighings (split into 3 groups, not 2)",
+     "Clock angle: |30h - 5.5m| degrees, take 360 minus it if over 180",
+     "Handshakes / pairs: n(n-1)/2",
+     "Rates: 'work together' problems add rates (1/a + 1/b)",
+     "Average speed for equal distances is the harmonic mean, not the plain average",
+     "Probability basics: independent events multiply; 'at least one' = 1 - P(none)"
+    ],
+    "questions": [
+     "Angle between the hands at 3:15?",
+     "10 people each shake hands once with everyone. How many handshakes?",
+     "Tap A fills a tank in 3h, tap B in 6h. Together?",
+     "Go 60 km/h there and 40 km/h back. Average speed?"
+    ],
+    "resources": [
+     "Wikipedia: Balance puzzle",
+     "Brilliant.org"
+    ],
+    "concepts": [
+     {
+      "title": "Answers",
+      "body": "- 3:15 → |30x3 - 5.5x15| = |90 - 82.5| = 7.5 degrees\n- 10 people → 10 x 9 / 2 = 45 handshakes\n- Taps → 1/3 + 1/6 = 1/2 tank per hour → 2 hours\n- 60 and 40 → 2 x 60 x 40 / (60 + 40) = 48 km/h (not 50)\n- 8 balls, one heavier, 2 weighings: weigh 3 vs 3. If equal, weigh the last 2. If not, take the heavy 3 and weigh 1 vs 1."
+     }
+    ]
+   },
+   {
+    "id": "number-maths",
+    "title": "Maths that shows up in code",
+    "summary": "Small number facts that turn into coding questions.",
+    "items": [
+     "Modulo: even/odd, wrap-around indexes (i + 1) % n, last digit x % 10",
+     "Digits: sum of digits with while n: n, d = divmod(n, 10)",
+     "GCD and LCM: math.gcd; lcm = a * b // gcd(a, b)",
+     "Primes: trial division up to sqrt(n); sieve for many numbers",
+     "Powers of two: n & (n - 1) == 0 (for n > 0); count bits with bin(n).count('1')",
+     "Sum 1..n = n(n+1)/2: find the missing number in O(1) space",
+     "Large results: answer modulo 10^9 + 7 when the statement asks"
+    ],
+    "questions": [
+     "Find the missing number in 0..n",
+     "Is a number a power of two?",
+     "Check if a number is a palindrome without converting to a string",
+     "FizzBuzz (yes, really: get the edge cases right)"
+    ],
+    "resources": [
+     "LeetCode: Math tag (easy)",
+     "HackerRank: Mathematics (easy)"
+    ],
+    "concepts": [
+     {
+      "title": "Templates",
+      "body": "```python\nimport math\ndef is_prime(n):\n    if n < 2: return False\n    for d in range(2, math.isqrt(n) + 1):\n        if n % d == 0: return False\n    return True\n\ndef missing(nums):                  # nums has 0..n with one missing\n    n = len(nums)\n    return n * (n + 1) // 2 - sum(nums)\n\ndef digit_sum(n):\n    s = 0\n    while n:\n        n, d = divmod(n, 10); s += d\n    return s\n\nis_pow2 = lambda n: n > 0 and n & (n - 1) == 0\n```\nIn JavaScript: Math.floor(a / b) for integer division, and watch out because % keeps the sign (-1 % 3 is -1)."
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Write differences first on any sequence",
+    "Clock angle, handshakes, combined rates and average speed formulas",
+    "Modulo, gcd, primes up to sqrt(n), the n(n+1)/2 trick"
+   ],
+   "mustDo": [
+    "Solve 10 sequence/logic questions under time (about 1 minute each)",
+    "Write is_prime, missing number and is_pow2 from memory"
+   ],
+   "configs": [
+    {
+     "title": "Puzzle routine",
+     "lang": "text",
+     "note": "For multiple-choice puzzles under time.",
+     "code": "1. Read the question once slowly. Underline what is asked.\n2. Write it down: differences, a grid, or a quick sketch.\n3. Check each option against the rule; eliminate.\n4. Stuck after ~90 seconds? Pick the best guess, flag it, move on.\n5. Come back to flagged ones at the end, if the test allows going back (check this in the sample test)."
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-hashing",
+  "icon": "#️⃣",
+  "short": "Hashing",
+  "title": "Arrays, Strings and Hash Maps",
+  "tagline": "Before Thursday. The most common test pattern: count, look up, group.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "counting",
+    "title": "Counting and frequency",
+    "summary": "When the question is about how many times, reach for a Counter.",
+    "items": [
+     "Count with Counter or defaultdict(int)",
+     "Count the counts: Counter(Counter(s).values())",
+     "Anagrams: compare Counters, or sorted strings as keys",
+     "First unique character: count first, then scan in order",
+     "Majority element and top-k frequent (Counter.most_common)"
+    ],
+    "questions": [
+     "Valid Anagram",
+     "Group Anagrams",
+     "First Unique Character in a String",
+     "Top K Frequent Elements",
+     "Sherlock and the Valid String (HackerRank)"
+    ],
+    "resources": [
+     "LeetCode Top Interview 150: Hashmap section"
+    ],
+    "concepts": [
+     {
+      "title": "Group anagrams",
+      "body": "Key idea: words that are anagrams share the same sorted letters, so use that as the dictionary key.\n```python\nfrom collections import defaultdict\ndef group_anagrams(words):\n    groups = defaultdict(list)\n    for w in words:\n        groups[\"\".join(sorted(w))].append(w)\n    return list(groups.values())\n```\nComplexity: O(n * k log k) for n words of length k. Edge cases: empty list, empty string \"\", one word."
+     }
+    ]
+   },
+   {
+    "id": "lookup",
+    "title": "Look up a partner (seen-so-far)",
+    "summary": "One pass: for each item, ask whether its partner was already seen.",
+    "items": [
+     "Two Sum with a dict value -> index, checked before inserting",
+     "Pairs with difference k using a set",
+     "Contains duplicate (within distance k): dict of last index",
+     "Count pairs/triplets by updating counts in the right order",
+     "Know when you need a set (exists?) vs a dict (count or index)"
+    ],
+    "questions": [
+     "Two Sum",
+     "Contains Duplicate II",
+     "Pairs (HackerRank)",
+     "Count Triplets (HackerRank)",
+     "Longest Consecutive Sequence"
+    ],
+    "resources": [
+     "NeetCode: Arrays & Hashing"
+    ],
+    "concepts": [
+     {
+      "title": "Two Sum, the pattern behind many problems",
+      "body": "```python\ndef two_sum(nums, target):\n    seen = {}                      # value -> index\n    for i, x in enumerate(nums):\n        if target - x in seen:     # check BEFORE inserting, so x can't pair with itself\n            return [seen[target - x], i]\n        seen[x] = i\n    return []\n```\nEdge cases: duplicates like [3, 3] with target 6 (works because we check before inserting), negatives, no answer."
+     }
+    ]
+   },
+   {
+    "id": "prefix",
+    "title": "Prefix sums",
+    "summary": "Precompute running totals to answer range sums in O(1).",
+    "items": [
+     "Build prefix = [0, *accumulate(arr)]",
+     "Range sum arr[i..j] = prefix[j+1] - prefix[i]",
+     "Subarray sum equals k: dict of prefix-sum counts",
+     "Difference array for many range updates"
+    ],
+    "questions": [
+     "Range Sum Query - Immutable",
+     "Subarray Sum Equals K",
+     "Array Manipulation (HackerRank, difference array)"
+    ],
+    "resources": [
+     "LeetCode prefix sum tag"
+    ],
+    "concepts": [
+     {
+      "title": "Subarray sum equals k",
+      "body": "A subarray ending at i sums to k when some earlier prefix equals current_prefix - k.\n```python\nfrom collections import defaultdict\ndef subarray_sum(nums, k):\n    count = defaultdict(int); count[0] = 1   # empty prefix\n    total = ans = 0\n    for x in nums:\n        total += x\n        ans += count[total - k]\n        count[total] += 1\n    return ans\n```\nWorks with negatives (a sliding window does not). Forgetting count[0] = 1 is the classic bug."
+     }
+    ]
+   },
+   {
+    "id": "strings",
+    "title": "String handling",
+    "summary": "Strings are immutable: build with lists, join at the end.",
+    "items": [
+     "Build output with a list and ''.join",
+     "Palindrome checks with two pointers; ignore non-alphanumerics when asked",
+     "ord/chr and counting with an array of 26",
+     "split, strip, lower, isalnum, isdigit"
+    ],
+    "questions": [
+     "Valid Palindrome",
+     "Longest Common Prefix",
+     "String Compression"
+    ],
+    "resources": [],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "When to use Counter vs set vs dict of index",
+    "Why Two Sum checks before inserting",
+    "Why prefix sums handle negatives and sliding windows don't"
+   ],
+   "mustDo": [
+    "Solve 6 problems from this phase with edge cases written first",
+    "Write two_sum and group_anagrams from memory"
+   ],
+   "configs": [
+    {
+     "title": "Frequency + lookup skeleton",
+     "lang": "python",
+     "note": "Most hashing problems are a variation of this.",
+     "code": "from collections import defaultdict\n\ndef solve(arr):\n    seen = defaultdict(int)\n    ans = 0\n    for x in arr:\n        ans += seen[partner_of(x)]   # query first\n        seen[x] += 1                  # then record\n    return ans"
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-pointers",
+  "icon": "↔️",
+  "short": "Pointers",
+  "title": "Two Pointers, Sliding Window and Binary Search",
+  "tagline": "Before Thursday. Turn O(n^2) scans into O(n) or O(n log n).",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "two-pointers",
+    "title": "Two pointers",
+    "summary": "Two indices moving toward each other or in the same direction.",
+    "items": [
+     "Opposite ends on a sorted array (pair sum, container)",
+     "Fast/slow pointers to remove duplicates in place",
+     "Merge two sorted arrays",
+     "Sort first when order does not matter, then two pointers"
+    ],
+    "questions": [
+     "Two Sum II (sorted)",
+     "Container With Most Water",
+     "3Sum",
+     "Remove Duplicates from Sorted Array",
+     "Merge Sorted Array"
+    ],
+    "resources": [
+     "NeetCode: Two Pointers"
+    ],
+    "concepts": [
+     {
+      "title": "Opposite-ends template",
+      "body": "```python\ndef pair_with_sum(sorted_arr, target):\n    lo, hi = 0, len(sorted_arr) - 1\n    while lo < hi:\n        s = sorted_arr[lo] + sorted_arr[hi]\n        if s == target: return lo, hi\n        if s < target: lo += 1     # need bigger\n        else: hi -= 1              # need smaller\n    return None\n```\n3Sum = sort, fix one number, then this, skipping duplicates."
+     }
+    ]
+   },
+   {
+    "id": "window",
+    "title": "Sliding window",
+    "summary": "Contiguous block: add the entering item, remove the leaving one.",
+    "items": [
+     "Fixed size k: compute first window, then slide",
+     "Variable size: expand right, shrink left while invalid",
+     "Track window contents with a Counter or set",
+     "Spot it: 'contiguous', 'substring', 'subarray of length k', 'at most k'"
+    ],
+    "questions": [
+     "Maximum Average Subarray I",
+     "Longest Substring Without Repeating Characters",
+     "Minimum Size Subarray Sum",
+     "Longest Repeating Character Replacement",
+     "Server optimisation (switch on k servers)"
+    ],
+    "resources": [
+     "NeetCode: Sliding Window"
+    ],
+    "concepts": [
+     {
+      "title": "Variable window template",
+      "body": "```python\ndef longest_unique(s):\n    last = {}                 # char -> last index\n    left = best = 0\n    for right, ch in enumerate(s):\n        if ch in last and last[ch] >= left:\n            left = last[ch] + 1          # shrink past the repeat\n        last[ch] = right\n        best = max(best, right - left + 1)\n    return best\n```\nEdge cases: \"\", \"a\", \"aaaa\", all unique."
+     }
+    ]
+   },
+   {
+    "id": "binary-search",
+    "title": "Binary search",
+    "summary": "Halve the search space; also works on the answer itself.",
+    "items": [
+     "Classic search in a sorted array with lo <= hi",
+     "First/last position (lower and upper bound)",
+     "Search on the answer: smallest x where condition(x) is true",
+     "Rotated sorted array",
+     "Use bisect when you just need positions"
+    ],
+    "questions": [
+     "Binary Search",
+     "Search Insert Position",
+     "Find First and Last Position",
+     "Koko Eating Bananas",
+     "Search in Rotated Sorted Array"
+    ],
+    "resources": [
+     "NeetCode: Binary Search"
+    ],
+    "concepts": [
+     {
+      "title": "Lower-bound template (no off-by-one)",
+      "body": "```python\ndef first_true(lo, hi, ok):      # smallest x in [lo, hi] with ok(x) True; hi if none\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if ok(mid): hi = mid\n        else: lo = mid + 1\n    return lo\n```\nSearch on the answer: for 'minimum speed to finish in h hours', ok(speed) = hours_needed(speed) <= h."
+     }
+    ]
+   },
+   {
+    "id": "sorting",
+    "title": "Sorting tricks",
+    "summary": "Sorting often unlocks a simple solution.",
+    "items": [
+     "Sort then compare neighbours (min difference, duplicates)",
+     "Sort intervals by start, then merge",
+     "Custom keys with tuples; stable sort",
+     "Counting sort when values are small"
+    ],
+    "questions": [
+     "Merge Intervals",
+     "Minimum Absolute Difference (HackerRank)",
+     "Meeting Rooms"
+    ],
+    "resources": [],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "How to recognise a sliding window problem",
+    "Why the lower-bound loop uses lo < hi and hi = mid",
+    "When to sort first"
+   ],
+   "mustDo": [
+    "Solve 2 two-pointer, 2 sliding window and 2 binary search problems",
+    "Write the window and lower-bound templates from memory"
+   ],
+   "configs": [
+    {
+     "title": "Fixed window",
+     "lang": "python",
+     "note": "Sum of every window of size k.",
+     "code": "def best_window(arr, k):\n    cur = sum(arr[:k]); best = cur\n    for i in range(k, len(arr)):\n        cur += arr[i] - arr[i - k]\n        best = max(best, cur)\n    return best"
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-linear",
+  "icon": "📚",
+  "short": "Stacks & Heaps",
+  "title": "Stacks, Queues, Linked Lists and Heaps",
+  "tagline": "Before the interview. Ordering and 'most recent / smallest so far' problems.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "stack",
+    "title": "Stacks",
+    "summary": "Last in, first out: matching and 'nearest greater'.",
+    "items": [
+     "Valid brackets with a stack and a closing->opening map",
+     "Monotonic stack for next greater element / daily temperatures",
+     "Evaluate expressions (Reverse Polish Notation)",
+     "Min stack with a parallel stack of minimums"
+    ],
+    "questions": [
+     "Valid Parentheses",
+     "Min Stack",
+     "Daily Temperatures",
+     "Evaluate Reverse Polish Notation",
+     "Balanced Brackets (HackerRank)"
+    ],
+    "resources": [
+     "NeetCode: Stack"
+    ],
+    "concepts": [
+     {
+      "title": "Valid brackets",
+      "body": "```python\ndef valid(s):\n    pairs = {')': '(', ']': '[', '}': '{'}\n    stack = []\n    for ch in s:\n        if ch in pairs:\n            if not stack or stack.pop() != pairs[ch]:\n                return False\n        else:\n            stack.append(ch)\n    return not stack          # leftovers mean unclosed brackets\n```\nEdge cases: \"\", \"(\", \")\", \"([)]\"."
+     }
+    ]
+   },
+   {
+    "id": "queue",
+    "title": "Queues and deques",
+    "summary": "First in, first out; deque for both ends.",
+    "items": [
+     "collections.deque for O(1) popleft",
+     "BFS uses a queue",
+     "Sliding window maximum with a monotonic deque"
+    ],
+    "questions": [
+     "Implement Queue using Stacks",
+     "Sliding Window Maximum"
+    ],
+    "resources": [],
+    "concepts": []
+   },
+   {
+    "id": "linked-list",
+    "title": "Linked lists",
+    "summary": "Pointer manipulation; draw it before coding.",
+    "items": [
+     "Reverse a linked list iteratively",
+     "Fast/slow pointers: middle node, cycle detection",
+     "Merge two sorted lists with a dummy head",
+     "Remove nth node from the end with a gap of n"
+    ],
+    "questions": [
+     "Reverse Linked List",
+     "Merge Two Sorted Lists",
+     "Linked List Cycle",
+     "Remove Nth Node From End of List"
+    ],
+    "resources": [
+     "NeetCode: Linked List"
+    ],
+    "concepts": [
+     {
+      "title": "Reverse in place",
+      "body": "```python\ndef reverse(head):\n    prev = None\n    while head:\n        head.next, prev, head = prev, head, head.next\n    return prev\n```\nSay it as: save next, point back, move both forward."
+     }
+    ]
+   },
+   {
+    "id": "heap",
+    "title": "Heaps (priority queues)",
+    "summary": "Repeatedly take the smallest or largest.",
+    "items": [
+     "heapq is a min-heap; negate for max",
+     "Top k largest: keep a min-heap of size k",
+     "Merge k sorted lists",
+     "Running median with two heaps"
+    ],
+    "questions": [
+     "Kth Largest Element in an Array",
+     "K Closest Points to Origin",
+     "Last Stone Weight",
+     "Find Median from Data Stream"
+    ],
+    "resources": [
+     "NeetCode: Heap / Priority Queue"
+    ],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "When a monotonic stack applies",
+    "Why deque instead of list for queues",
+    "Top-k with a size-k heap is O(n log k)"
+   ],
+   "mustDo": [
+    "Solve Valid Parentheses, Daily Temperatures, Reverse Linked List, Kth Largest"
+   ],
+   "configs": [
+    {
+     "title": "Next greater element",
+     "lang": "python",
+     "note": "Monotonic decreasing stack of indices.",
+     "code": "def next_greater(a):\n    res = [-1] * len(a); stack = []\n    for i, x in enumerate(a):\n        while stack and a[stack[-1]] < x:\n            res[stack.pop()] = x\n        stack.append(i)\n    return res"
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-graphs",
+  "icon": "🌳",
+  "short": "Trees & Graphs",
+  "title": "Trees, Graphs and Recursion",
+  "tagline": "Before the interview. BFS, DFS and thinking recursively.",
+  "level": "advanced",
+  "color": "",
+  "topics": [
+   {
+    "id": "trees",
+    "title": "Binary trees",
+    "summary": "Most tree problems are a DFS that returns something.",
+    "items": [
+     "Pre/in/post-order DFS, recursively and with a stack",
+     "Level-order traversal with a queue",
+     "Max depth, balanced check, diameter (return height, update answer)",
+     "BST property: in-order is sorted; validate with min/max bounds"
+    ],
+    "questions": [
+     "Maximum Depth of Binary Tree",
+     "Invert Binary Tree",
+     "Binary Tree Level Order Traversal",
+     "Validate Binary Search Tree",
+     "Lowest Common Ancestor of a BST"
+    ],
+    "resources": [
+     "NeetCode: Trees"
+    ],
+    "concepts": [
+     {
+      "title": "DFS that returns a value",
+      "body": "```python\ndef max_depth(node):\n    if not node: return 0\n    return 1 + max(max_depth(node.left), max_depth(node.right))\n```\nBase case first (empty tree), then combine children. Most tree answers look like this."
+     }
+    ]
+   },
+   {
+    "id": "graphs",
+    "title": "Graphs and grids",
+    "summary": "Model as nodes and edges; visit each once.",
+    "items": [
+     "Build an adjacency list with defaultdict(list)",
+     "BFS for shortest path in unweighted graphs",
+     "DFS / flood fill for connected components and islands",
+     "Track visited to avoid infinite loops",
+     "Topological sort for dependencies (course schedule)"
+    ],
+    "questions": [
+     "Number of Islands",
+     "Flood Fill",
+     "Rotting Oranges",
+     "Course Schedule",
+     "Clone Graph"
+    ],
+    "resources": [
+     "NeetCode: Graphs"
+    ],
+    "concepts": [
+     {
+      "title": "Grid BFS template",
+      "body": "```python\nfrom collections import deque\ndef bfs(grid, start):\n    R, C = len(grid), len(grid[0])\n    dist = {start: 0}; q = deque([start])\n    while q:\n        r, c = q.popleft()\n        for dr, dc in ((1,0),(-1,0),(0,1),(0,-1)):\n            nr, nc = r + dr, c + dc\n            if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] != '#' and (nr, nc) not in dist:\n                dist[(nr, nc)] = dist[(r, c)] + 1\n                q.append((nr, nc))\n    return dist\n```"
+     }
+    ]
+   },
+   {
+    "id": "backtracking",
+    "title": "Recursion and backtracking",
+    "summary": "Choose, explore, un-choose.",
+    "items": [
+     "Subsets and permutations templates",
+     "Prune early when a partial answer is already invalid",
+     "Know the recursion limit and when to switch to iteration"
+    ],
+    "questions": [
+     "Subsets",
+     "Permutations",
+     "Combination Sum"
+    ],
+    "resources": [],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "BFS vs DFS: when each is the right tool",
+    "How to avoid revisiting nodes"
+   ],
+   "mustDo": [
+    "Solve Number of Islands, Level Order Traversal and Course Schedule"
+   ],
+   "configs": [
+    {
+     "title": "Subsets (backtracking)",
+     "lang": "python",
+     "note": "Choose / explore / un-choose.",
+     "code": "def subsets(nums):\n    res, cur = [], []\n    def go(i):\n        if i == len(nums):\n            res.append(cur[:]); return\n        cur.append(nums[i]); go(i + 1); cur.pop()   # take it\n        go(i + 1)                                     # skip it\n    go(0)\n    return res"
+    }
+   ]
+  }
+ },
+ {
+  "id": "dsa-dp",
+  "icon": "🧮",
+  "short": "DP & Greedy",
+  "title": "Dynamic Programming and Greedy",
+  "tagline": "Nice to have. Recognise the classic shapes; don't sink days here before the interview.",
+  "level": "interview",
+  "color": "",
+  "topics": [
+   {
+    "id": "dp",
+    "title": "1D dynamic programming",
+    "summary": "Define the state, the recurrence and the base case.",
+    "items": [
+     "Climbing stairs / Fibonacci: dp[i] = dp[i-1] + dp[i-2]",
+     "House robber: take or skip",
+     "Coin change: min coins for each amount",
+     "Top-down with functools.cache, then bottom-up if needed"
+    ],
+    "questions": [
+     "Climbing Stairs",
+     "House Robber",
+     "Coin Change",
+     "Longest Increasing Subsequence"
+    ],
+    "resources": [
+     "NeetCode: 1-D DP"
+    ],
+    "concepts": [
+     {
+      "title": "Take or skip",
+      "body": "```python\ndef rob(nums):\n    take, skip = 0, 0\n    for x in nums:\n        take, skip = skip + x, max(take, skip)\n    return max(take, skip)\n```\nState: best total if we take / skip the current house. Base: both 0."
+     }
+    ]
+   },
+   {
+    "id": "greedy",
+    "title": "Greedy",
+    "summary": "Make the locally best choice when you can argue it is safe.",
+    "items": [
+     "Interval scheduling: sort by end time",
+     "Jump game: track the furthest reachable index",
+     "Best time to buy and sell stock: track the minimum so far"
+    ],
+    "questions": [
+     "Best Time to Buy and Sell Stock",
+     "Jump Game",
+     "Non-overlapping Intervals"
+    ],
+    "resources": [],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "How to describe a DP state out loud"
+   ],
+   "mustDo": [
+    "Solve Climbing Stairs, House Robber and Best Time to Buy and Sell Stock"
+   ],
+   "configs": []
+  }
+ }
+]
