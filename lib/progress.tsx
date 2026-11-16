@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Phase, Progress, emptyProgress, phases } from "@/lib/roadmap";
+import { Phase, Progress, TrackId, emptyProgress, phasesOf } from "@/lib/roadmap";
 
 const LS_KEY = "ai-roadmap-progress-v1";
 
@@ -129,9 +129,9 @@ export function phaseProgress(p: Phase, done: Record<string, string>) {
   return { done: d + cpDone, total: total + cpItems.length, q, qTotal, topicsDone, topics: p.topics.length, cpDone, cpTotal: cpItems.length };
 }
 
-export function overallProgress(done: Record<string, string>) {
+export function overallProgress(done: Record<string, string>, track: TrackId) {
   let d = 0, total = 0;
-  for (const p of phases) {
+  for (const p of phasesOf(track)) {
     const s = phaseProgress(p, done);
     d += s.done; total += s.total;
   }

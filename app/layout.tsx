@@ -5,8 +5,8 @@ import { ProgressProvider } from "@/lib/progress";
 import SiteNav from "@/components/SiteNav";
 
 export const metadata: Metadata = {
-  title: "AI Engineer Roadmap",
-  description: "A detailed, checkable study roadmap to become a senior AI / agent engineer.",
+  title: "Study Roadmap",
+  description: "Checkable study routes: AI engineering, DSA and frontend interview prep.",
 };
 
 const THEME_INIT = `try{var t=localStorage.getItem("ai-roadmap-theme");if(!t){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
