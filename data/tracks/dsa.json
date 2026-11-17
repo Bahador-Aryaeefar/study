@@ -70,17 +70,26 @@
      "sort / sorted: O(n log n); string concatenation in a loop: O(n^2), use ''.join",
      "heapq push/pop O(log n), heapify O(n); deque append/popleft O(1)",
      "Slicing a[i:j] copies: O(j - i)",
-     "Recursion depth limit in Python is about 1000: use iteration for deep inputs"
+     "Recursion depth limit in Python is about 1000: use iteration for deep inputs",
+     "Sorting: merge sort and heap sort O(n log n) worst case; quick sort O(n log n) average, O(n^2) worst",
+     "Sorting: bubble, insertion and selection sort O(n^2); insertion sort is O(n) on nearly sorted data",
+     "Searching: linear O(n); binary search O(log n) but needs sorted data"
     ],
     "questions": [
      "Why is `if x in my_list` inside a loop a problem, and what is the fix?",
-     "What is the time and space complexity of your solution?"
+     "What is the time and space complexity of your solution?",
+     "Which sorting algorithm has the best asymptotic runtime: bubble, insertion, selection or merge?"
     ],
     "resources": [
      "Python TimeComplexity wiki",
      "Big-O cheat sheet"
     ],
-    "concepts": []
+    "concepts": [
+     {
+      "title": "Sorting and searching cheat sheet (common multiple-choice)",
+      "body": "- Merge sort: O(n log n) best, average and worst. O(n) extra space. Stable.\n- Heap sort: O(n log n) always. O(1) extra space. Not stable.\n- Quick sort: O(n log n) average, O(n^2) worst (bad pivots). In place. Usually fastest in practice.\n- Insertion sort: O(n^2) worst, O(n) best (already sorted). Good for small or nearly sorted data.\n- Bubble sort and selection sort: O(n^2). Never the right answer for 'best'.\n- Counting / radix sort: O(n + k), only for integers in a limited range.\n- Python's sorted() and JS's Array.prototype.sort (V8) use Timsort: O(n log n) worst, O(n) on sorted input, stable.\n- Linear search O(n); binary search O(log n) on sorted data; hash lookup O(1) average.\nTypical question: 'best asymptotic runtime' among bubble / insertion / selection / merge → merge sort."
+     }
+    ]
    },
    {
     "id": "python-tools",
@@ -104,6 +113,37 @@
      {
       "title": "Templates to type without thinking",
       "body": "```python\nfrom collections import Counter, defaultdict, deque\nfrom itertools import accumulate\nimport heapq, bisect\n\nfreq = Counter(arr)                       # value -> count\ngroups = defaultdict(list)                # key -> list\nprefix = [0, *accumulate(arr)]            # sum(arr[i:j]) == prefix[j] - prefix[i]\npairs = list(zip(arr, arr[1:]))           # neighbours\ni = bisect.bisect_left(sorted_arr, x)     # first index with value >= x\nheap = []; heapq.heappush(heap, (dist, node)); d, n = heapq.heappop(heap)\nq = deque([start]); q.append(x); q.popleft()\n```"
+     }
+    ]
+   },
+   {
+    "id": "js-tools",
+    "title": "DSA in JavaScript (backup language)",
+    "summary": "If the test only allows JS/TS, these are the same patterns.",
+    "items": [
+     "Set for lookups: new Set(arr), s.has(x), s.add(x), s.size",
+     "Map for counting: m.set(x, (m.get(x) ?? 0) + 1); iterate with for (const [k, v] of m)",
+     "Numeric sort ALWAYS needs a comparator: arr.sort((a, b) => a - b)",
+     "Integer division Math.floor(a / b) (or Math.trunc for negatives); % keeps the sign (-1 % 3 === -1)",
+     "Arrays: push/pop O(1), shift/unshift O(n): use an index pointer as a queue",
+     "No built-in heap: sort once, or use a small binary heap, or the test's provided helper",
+     "Big integers: Number is safe up to 2^53 - 1; use BigInt (10n) beyond that",
+     "Use the HackerRank input template; don't write your own stdin parsing"
+    ],
+    "questions": [
+     "Why does [10, 9, 1].sort() return [1, 10, 9]?",
+     "How do you count frequencies in JS?",
+     "How do you implement a queue in JS without O(n) shift?"
+    ],
+    "resources": [
+     "MDN: Map",
+     "MDN: Set",
+     "MDN: Array.prototype.sort"
+    ],
+    "concepts": [
+     {
+      "title": "Python → JavaScript, side by side",
+      "body": "```js\n// Counter\nconst count = new Map();\nfor (const x of arr) count.set(x, (count.get(x) ?? 0) + 1);\n\n// Two Sum (seen-so-far)\nfunction twoSum(nums, target) {\n  const seen = new Map();                       // value -> index\n  for (let i = 0; i < nums.length; i++) {\n    const need = target - nums[i];\n    if (seen.has(need)) return [seen.get(need), i];\n    seen.set(nums[i], i);\n  }\n  return [];\n}\n\n// Sliding window, fixed size k\nfunction bestWindow(arr, k) {\n  let cur = 0;\n  for (let i = 0; i < k; i++) cur += arr[i];\n  let best = cur;\n  for (let i = k; i < arr.length; i++) {\n    cur += arr[i] - arr[i - k];\n    best = Math.max(best, cur);\n  }\n  return best;\n}\n\n// Lower bound binary search: first index with arr[i] >= x\nfunction lowerBound(arr, x) {\n  let lo = 0, hi = arr.length;\n  while (lo < hi) {\n    const mid = (lo + hi) >> 1;\n    if (arr[mid] < x) lo = mid + 1; else hi = mid;\n  }\n  return lo;\n}\n\n// Queue with a head pointer (BFS)\nconst queue = [start]; let head = 0;\nwhile (head < queue.length) {\n  const node = queue[head++];\n  for (const next of graph.get(node) ?? []) {\n    if (!visited.has(next)) { visited.add(next); queue.push(next); }\n  }\n}\n\n// Valid brackets (stack)\nfunction valid(s) {\n  const pairs = { \")\": \"(\", \"]\": \"[\", \"}\": \"{\" };\n  const stack = [];\n  for (const ch of s) {\n    if (ch in pairs) { if (stack.pop() !== pairs[ch]) return false; }\n    else stack.push(ch);\n  }\n  return stack.length === 0;\n}\n```\nOdd numbers between a and b inclusive:\n```js\nfor (let i = a % 2 ? a : a + 1; i <= b; i += 2) console.log(i);\n```\nCareful: `a % 2` is -1 for negative odd numbers, which is still truthy, so this works for negatives too."
      }
     ]
    }
@@ -244,6 +284,135 @@
      "code": "1. Read the question once slowly. Underline what is asked.\n2. Write it down: differences, a grid, or a quick sketch.\n3. Check each option against the rule; eliminate.\n4. Stuck after ~90 seconds? Pick the best guess, flag it, move on.\n5. Come back to flagged ones at the end, if the test allows going back (check this in the sample test)."
     }
    ]
+  }
+ },
+ {
+  "id": "dsa-cs",
+  "icon": "🎓",
+  "short": "CS MCQ",
+  "title": "CS Fundamentals for Multiple Choice",
+  "tagline": "Before Thursday. The theory questions the sample test hinted at, with answers.",
+  "level": "foundation",
+  "color": "",
+  "topics": [
+   {
+    "id": "structures",
+    "title": "Data structures and their costs",
+    "summary": "Know what each structure is good and bad at.",
+    "items": [
+     "Array: index O(1), insert/delete in the middle O(n), search O(n) (O(log n) if sorted)",
+     "Linked list: insert/delete at a known node O(1), index and search O(n)",
+     "Stack = LIFO (undo, brackets, call stack, DFS); Queue = FIFO (BFS, task scheduling)",
+     "Hash table: insert/lookup/delete O(1) average, O(n) worst (many collisions); no order",
+     "Collisions handled by chaining or open addressing; a good hash and resizing keep it O(1)",
+     "Heap: get min/max O(1), insert and remove O(log n); used for priority queues",
+     "Balanced BST: search/insert/delete O(log n); unbalanced worst case O(n)",
+     "Graph representations: adjacency list (sparse, O(V+E) space) vs matrix (dense, O(V^2))"
+    ],
+    "questions": [
+     "Which structure gives O(1) average lookup by key? (hash table)",
+     "Which structure is used for BFS? (queue) And for DFS? (stack / recursion)",
+     "Worst-case search in an unbalanced BST? (O(n))",
+     "Best structure to always get the smallest item quickly? (min-heap)"
+    ],
+    "resources": [
+     "Big-O cheat sheet (bigocheatsheet.com)"
+    ],
+    "concepts": [
+     {
+      "title": "Practice MCQs with answers",
+      "body": "1. Accessing the 5th element of an array is: O(1). In a linked list: O(n).\n2. Undo in a text editor is best modelled with a: stack.\n3. A printer job list is best modelled with a: queue.\n4. Average time to check membership in a hash set: O(1). Worst case: O(n).\n5. Height of a balanced binary tree with n nodes: O(log n).\n6. Inserting into a binary heap: O(log n). Building a heap from n items: O(n).\n7. Space of an adjacency matrix for V vertices: O(V^2).\n8. Which is NOT O(n log n) in the worst case: merge sort, heap sort, quick sort? → quick sort (O(n^2))."
+     }
+    ]
+   },
+   {
+    "id": "trees-recursion",
+    "title": "Trees, traversals and recursion",
+    "summary": "Trace small examples by hand.",
+    "items": [
+     "In-order (left, node, right) of a BST gives sorted order",
+     "Pre-order (node, left, right) and post-order (left, right, node)",
+     "Level-order = BFS with a queue",
+     "Recursion needs a base case; each call uses stack space (O(depth))",
+     "Naive recursive Fibonacci is O(2^n); with memoisation O(n)",
+     "Binary search tree: left < node < right"
+    ],
+    "questions": [
+     "In-order traversal of the BST built by inserting 5, 3, 8, 1, 4? (1 3 4 5 8)",
+     "Pre-order of the same tree? (5 3 1 4 8)",
+     "What does f(4) return if f(n) = n * f(n-1), f(0) = 1? (24)"
+    ],
+    "resources": [
+     "visualgo.net (BST, traversals)"
+    ],
+    "concepts": [
+     {
+      "title": "Trace it",
+      "body": "Insert 5, 3, 8, 1, 4 into an empty BST:\n```text\n      5\n     / \\\n    3   8\n   / \\\n  1   4\n```\n- In-order: 1 3 4 5 8 (sorted)\n- Pre-order: 5 3 1 4 8\n- Post-order: 1 4 3 8 5\n- Level-order: 5 3 8 1 4\n```python\ndef f(n):\n    if n <= 1: return n\n    return f(n - 1) + f(n - 2)\n# f(5) = 5. Calls grow like 2^n, so f(40) is very slow without @cache.\n```"
+     }
+    ]
+   },
+   {
+    "id": "binary",
+    "title": "Binary, bits and number systems",
+    "summary": "Quick conversions and bit operators.",
+    "items": [
+     "Convert decimal to binary by powers of 2: 13 = 8 + 4 + 1 = 1101",
+     "Hex: 0xFF = 255; one hex digit = 4 bits",
+     "AND (&), OR (|), XOR (^), NOT (~), shifts (<<, >>); x << 1 doubles, x >> 1 halves",
+     "x & 1 tells odd/even; x ^ x = 0 (find the single non-duplicate)",
+     "n bits can represent 2^n values; a byte is 8 bits (0 to 255 unsigned)"
+    ],
+    "questions": [
+     "13 in binary? (1101)",
+     "6 & 3? 6 | 3? 6 ^ 3? (2, 7, 5)",
+     "How many values can 10 bits represent? (1024)"
+    ],
+    "resources": [],
+    "concepts": [
+     {
+      "title": "Worked examples",
+      "body": "- 6 = 110, 3 = 011\n- 6 & 3 = 010 = 2;  6 | 3 = 111 = 7;  6 ^ 3 = 101 = 5\n- 5 << 2 = 20 (multiply by 4); 20 >> 1 = 10\n- 255 = 0xFF = 11111111\n- Single number among pairs: reduce with XOR, e.g. 4 ^ 1 ^ 2 ^ 1 ^ 2 = 4"
+     }
+    ]
+   },
+   {
+    "id": "oop-code",
+    "title": "OOP and 'what does this print?'",
+    "summary": "Read code carefully, line by line.",
+    "items": [
+     "Encapsulation (hide internals), inheritance (reuse), polymorphism (same call, different behaviour), abstraction",
+     "Overriding (subclass replaces a method) vs overloading (same name, different parameters)",
+     "Composition over inheritance; interfaces / abstract classes",
+     "Pass by value vs reference: objects and lists are shared, reassignment is not",
+     "Trace loops by writing variable values in a small table",
+     "Integer division and modulo differ by language: Python 7 // 2 = 3, -7 // 2 = -4; JS Math.trunc(-7 / 2) = -3"
+    ],
+    "questions": [
+     "What does this print? x = [1, 2]; y = x; y.append(3); print(x)  → [1, 2, 3]",
+     "Overriding vs overloading?",
+     "Name the four OOP principles"
+    ],
+    "resources": [],
+    "concepts": [
+     {
+      "title": "Code reading practice",
+      "body": "```python\ntotal = 0\nfor i in range(1, 6):\n    if i % 2 == 0:\n        continue\n    total += i\nprint(total)        # 9  (1 + 3 + 5)\n\ndef add(item, box=[]):     # default list is shared between calls!\n    box.append(item)\n    return box\nadd(1); print(add(2))      # [1, 2]\n```\n```js\nlet a = { n: 1 }; let b = a; b.n = 2;\nconsole.log(a.n);          // 2 (same object)\nlet c = 1; let d = c; d = 5;\nconsole.log(c);            // 1 (numbers are copied)\n```"
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "The Big-O of array, linked list, hash table, heap and BST operations",
+    "Stack vs queue and where each is used",
+    "The four traversals on a small BST",
+    "Binary conversion and &, |, ^ on small numbers"
+   ],
+   "mustDo": [
+    "Answer every practice MCQ in this phase without looking, then check"
+   ],
+   "configs": []
   }
  },
  {
