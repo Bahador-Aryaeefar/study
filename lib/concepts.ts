@@ -11,6 +11,7 @@ import nc2 from "@/data/concepts-new2.json";
 import p1 from "@/data/concepts-p1.json";
 import p2 from "@/data/concepts-p2.json";
 import mathConcepts from "@/data/concepts-math";
+import mathBasics from "@/data/concepts-math-basics";
 
 export interface ConceptDef {
   id: string;
@@ -56,7 +57,30 @@ export interface Tech {
   watchOut: string[];
 }
 
-export const concepts: ConceptDef[] = [...(sd as ConceptDef[]), ...(nc as ConceptDef[]), ...(nc2 as ConceptDef[]), ...(p1 as ConceptDef[]), ...(p2 as ConceptDef[]), ...(mathConcepts as ConceptDef[]), ...(ai as ConceptDef[])].map((c) => ({ ...c, ...(usage[c.id] ?? {}), ...(extra[c.id] ?? {}) }));
+const merged: ConceptDef[] = [...(sd as ConceptDef[]), ...(nc as ConceptDef[]), ...(nc2 as ConceptDef[]), ...(p1 as ConceptDef[]), ...(p2 as ConceptDef[]), ...(mathConcepts as ConceptDef[]), ...(mathBasics as ConceptDef[]), ...(ai as ConceptDef[])].map((c) => ({ ...c, ...(usage[c.id] ?? {}), ...(extra[c.id] ?? {}) }));
+
+// Phase 01 is taught basics -> advanced: fixed order and numbered groups.
+const G_EVAL = "3 · Evaluation (do this before trusting numbers)";
+const G_DEEP = "5 · Math deepening";
+const G_MODERN = "6 · Modern ML";
+const G_RESEARCH = "7 · Research craft";
+const MATH_PATH: [string, string?][] = [
+  ["m-path"], ["m-vectors"], ["m-derivative"], ["m-prob-basics"],
+  ["m-linreg"], ["m-logreg"], ["m-trees"], ["m-knn-svm-nb"], ["m-clustering"],
+  ["m-cv-protocol"], ["ml-metrics", G_EVAL], ["m-nn-basics"],
+  ["m-linalg-svd", G_DEEP], ["m-calc-backprop", G_DEEP], ["m-optimization", G_DEEP], ["m-prob-bayes", G_DEEP], ["m-info-theory", G_DEEP], ["m-softmax-ce", G_DEEP], ["m-generalization", G_DEEP],
+  ["m-modern-dl", G_MODERN], ["m-generative", G_MODERN], ["m-rl-bayes", G_MODERN],
+  ["m-stats-research", G_RESEARCH], ["m-reading-writing", G_RESEARCH],
+];
+const rank = new Map(MATH_PATH.map(([id], i) => [id, i]));
+const regroup = new Map(MATH_PATH.filter(([, g]) => g).map(([id, g]) => [id, g as string]));
+const isMath = (x: ConceptDef) => x.phase === "math-ml";
+const mathSorted = merged
+  .filter(isMath)
+  .map((x) => ({ ...x, group: regroup.get(x.id) ?? x.group }))
+  .sort((a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99));
+let mi = 0;
+export const concepts: ConceptDef[] = merged.map((x) => (isMath(x) ? mathSorted[mi++] : x));
 
 export const conceptsFor = (phaseId: string) => concepts.filter((c) => c.phase === phaseId);
 

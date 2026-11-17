@@ -1,7 +1,7 @@
 {
   "id": "math-ml",
   "title": "Math & Modern ML (research-grade)",
-  "tagline": "Strong math plus modern (non-classical) deep learning - enough to read, reproduce and write ISI/IEEE-level papers.",
+  "tagline": "A full path from zero: foundations, classical ML, evaluation, neural nets, then research-grade math and modern ML for ISI/IEEE papers.",
   "level": "foundation",
   "color": "#818cf8",
   "topics": [

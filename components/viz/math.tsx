@@ -357,3 +357,91 @@ export function BackpropLab() {
     </Viz>
   );
 }
+
+/* ---------- 1-D gradient descent: what a derivative and learning rate do ---------- */
+export function GD1DLab() {
+  const [x0, setX0] = useState(-3.5);
+  const [lr, setLr] = useState(0.15);
+  const [n, setN] = useState(0);
+  const f = (x: number) => 0.25 * x ** 4 - 0.5 * x ** 2 + 0.15 * x + 0.6;
+  const df = (x: number) => x ** 3 - x + 0.15;
+  const path = useMemo(() => {
+    const p = [x0];
+    for (let i = 0; i < 40; i++) { const nx = p[i] - lr * df(p[i]); p.push(Math.max(-4, Math.min(4, nx))); }
+    return p;
+  }, [x0, lr]);
+  const k = Math.min(n, path.length - 1);
+  const x = path[k];
+  const X = (v: number) => W / 2 + v * 60;
+  const Y = (v: number) => H - 30 - v * 28;
+  const xs = Array.from({ length: 161 }, (_, i) => -4 + i / 20);
+  const slope = df(x);
+  return (
+    <Viz title="What is a derivative? Gradient descent in 1-D" hint="The slope (derivative) says which way is uphill. Step the opposite way, scaled by the learning rate. Too small = slow, too large = overshoot/diverge. Different start points can land in different minima.">
+      <div className="viz-row">
+        <Slider label="start x" value={x0} min={-3.5} max={3.5} step={0.1} onChange={(v) => { setX0(v); setN(0); }} show={(v) => v.toFixed(1)} />
+        <Slider label="learning rate" value={lr} min={0.01} max={0.9} step={0.01} onChange={(v) => { setLr(v); setN(0); }} show={(v) => v.toFixed(2)} />
+        <Btn kind="primary" onClick={() => setN((v) => Math.min(v + 1, 40))}>Step</Btn>
+        <Btn onClick={() => setN(40)}>Run 40</Btn>
+        <Btn onClick={() => setN(0)}>Reset</Btn>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="viz-svg" role="img" aria-label="Gradient descent on a curve">
+        <polyline fill="none" stroke="var(--muted)" strokeWidth={2} points={xs.map((v) => `${X(v)},${Y(f(v))}`).join(" ")} />
+        {path.slice(0, k + 1).map((v, i) => <circle key={i} cx={X(v)} cy={Y(f(v))} r={i === k ? 6 : 2.5} fill={i === k ? "var(--orange)" : "#3b82f6"} />)}
+        <line x1={X(x) - 40} y1={Y(f(x)) + slope * 40 * (28 / 60)} x2={X(x) + 40} y2={Y(f(x)) - slope * 40 * (28 / 60)} stroke="var(--orange)" strokeDasharray="4 3" />
+      </svg>
+      <div className="viz-stats">
+        <Stat label="step" value={String(k)} />
+        <Stat label="x" value={x.toFixed(3)} />
+        <Stat label="f(x)" value={f(x).toFixed(3)} />
+        <Stat label="slope f'(x)" value={slope.toFixed(3)} tone={Math.abs(slope) < 0.01 ? "good" : "warn"} />
+      </div>
+    </Viz>
+  );
+}
+
+/* ---------- k-means clustering ---------- */
+export function KMeansLab() {
+  const [k, setK] = useState(3);
+  const [iter, setIter] = useState(0);
+  const [seed, setSeed] = useState(3);
+  const pts = useMemo(() => {
+    const r = rng(42);
+    const g = () => (r() + r() + r() + r() - 2) * 0.9;
+    const centers = [[-2, -1], [2, 1.2], [-0.5, 2.2], [2.5, -1.8]];
+    return Array.from({ length: 120 }, (_, i) => { const c = centers[i % 4]; return [c[0] + g() * 0.9, c[1] + g() * 0.9]; });
+  }, []);
+  const state = useMemo(() => {
+    const r = rng(seed);
+    let cs = Array.from({ length: k }, () => pts[Math.floor(r() * pts.length)].slice());
+    let asg: number[] = [];
+    let inertia = 0;
+    for (let t = 0; t <= iter; t++) {
+      asg = pts.map((p) => { let b = 0, bd = Infinity; cs.forEach((c, i) => { const d = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2; if (d < bd) { bd = d; b = i; } }); return b; });
+      inertia = pts.reduce((s, p, i) => s + (p[0] - cs[asg[i]][0]) ** 2 + (p[1] - cs[asg[i]][1]) ** 2, 0);
+      cs = cs.map((c, i) => { const m = pts.filter((_, j) => asg[j] === i); return m.length ? [m.reduce((s, p) => s + p[0], 0) / m.length, m.reduce((s, p) => s + p[1], 0) / m.length] : c; });
+    }
+    return { cs, asg, inertia };
+  }, [k, iter, seed, pts]);
+  const col = ["#ef4444", "#3b82f6", "#16a34a", "#f59e0b", "#a855f7", "#0ea5e9"];
+  const X = (v: number) => W / 2 + v * 70;
+  const Y = (v: number) => H / 2 - v * 55;
+  return (
+    <Viz title="k-means, step by step" hint="Each iteration: (1) assign every point to its nearest centroid, (2) move each centroid to the mean of its points. It always decreases inertia but can get stuck in a local optimum - resample the initialization and change k (true k here is 4).">
+      <div className="viz-row">
+        <Slider label="k clusters" value={k} min={1} max={6} onChange={(v) => { setK(v); setIter(0); }} />
+        <Btn kind="primary" onClick={() => setIter((i) => Math.min(i + 1, 15))}>Iterate</Btn>
+        <Btn onClick={() => { setSeed((s) => s + 1); setIter(0); }}>New init</Btn>
+        <Btn onClick={() => setIter(0)}>Reset</Btn>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="viz-svg" role="img" aria-label="k-means clusters">
+        {pts.map((p, i) => <circle key={i} cx={X(p[0])} cy={Y(p[1])} r={3.2} fill={col[state.asg[i] % 6]} opacity={0.75} />)}
+        {state.cs.map((c, i) => <g key={i}><circle cx={X(c[0])} cy={Y(c[1])} r={8} fill="none" stroke="var(--text)" strokeWidth={2} /><circle cx={X(c[0])} cy={Y(c[1])} r={3} fill={col[i % 6]} /></g>)}
+      </svg>
+      <div className="viz-stats">
+        <Stat label="iteration" value={String(iter)} />
+        <Stat label="inertia (within-cluster SS)" value={state.inertia.toFixed(1)} tone="warn" />
+      </div>
+    </Viz>
+  );
+}
