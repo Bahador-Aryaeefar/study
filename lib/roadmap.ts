@@ -16,6 +16,28 @@ import cpB from "@/data/checkpoints-b.json";
 import ddA from "@/data/deep-dives-a.json";
 import ddB from "@/data/deep-dives-b.json";
 import ddC from "@/data/deep-dives-c.json";
+import dsaTrack from "@/data/tracks/dsa.json";
+import feTrack from "@/data/tracks/frontend.json";
+
+export type TrackId = "ai" | "dsa" | "frontend";
+
+export const TRACKS: Record<TrackId, { href: string; nav: string; title: [string, string]; lede: string; finish: [string, string] }> = {
+  ai: {
+    href: "/", nav: "🤖 AI", title: ["Road to", "Senior AI & Agent Engineer"],
+    lede: "Every phase ends with a checkpoint: what you must know, what you must build, and the configs you should be able to write.",
+    finish: ["Senior AI & Agent Engineer", "You made it. Go get the offer."],
+  },
+  dsa: {
+    href: "/dsa", nav: "🧩 DSA", title: ["Road to", "Passing the Coding Round"],
+    lede: "Patterns, not problem counts. Each phase gives the pattern, a template you should write from memory, and problems to drill on HackerRank or LeetCode.",
+    finish: ["Coding round ready", "Edge cases first, then code. Go pass it."],
+  },
+  frontend: {
+    href: "/frontend", nav: "🎨 Frontend", title: ["Road to", "Frontend Interview Ready"],
+    lede: "JavaScript, TypeScript, HTML/CSS, React, the browser and testing: what graduate frontend tests and interviews actually ask, with code to write by hand.",
+    finish: ["Frontend interview ready", "Talk through your thinking. You've built this for years."],
+  },
+};
 
 export type Level = "foundation" | "core" | "advanced" | "interview";
 
@@ -39,6 +61,7 @@ export interface Topic {
 }
 export interface Phase {
   id: string;
+  track: TrackId;
   index: number;
   title: string;
   tagline: string;
@@ -64,6 +87,9 @@ interface RawPhase {
   level: string;
   color: string;
   topics: RawTopic[];
+  icon?: string;
+  short?: string;
+  checkpoint?: RawCheckpoint;
 }
 
 const slug = (s: string) =>
@@ -73,7 +99,11 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 
-const raw = [p00, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12] as RawPhase[];
+const raw: Record<TrackId, RawPhase[]> = {
+  ai: [p00, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12] as RawPhase[],
+  dsa: dsaTrack as RawPhase[],
+  frontend: feTrack as RawPhase[],
+};
 
 export interface Config {
   title: string;
@@ -118,10 +148,12 @@ export const PHASE_META: Record<string, { icon: string; short: string }> = {
   "interview-career": { icon: "🎯", short: "Interview" },
 };
 
-export const phases: Phase[] = raw.map((p, index) => {
-  const cp = checkpointsRaw[p.id];
+const build = (track: TrackId) => raw[track].map((p, index): Phase => {
+  const cp = p.checkpoint ?? checkpointsRaw[p.id];
+  if (p.icon) PHASE_META[p.id] = { icon: p.icon, short: p.short ?? p.title };
   return {
     id: p.id,
+    track,
     index,
     title: p.title,
     tagline: p.tagline,
@@ -149,6 +181,16 @@ export const phases: Phase[] = raw.map((p, index) => {
       : { mustKnow: [], mustDo: [], configs: [] },
   };
 });
+
+const byTrack: Record<TrackId, Phase[]> = { ai: build("ai"), dsa: build("dsa"), frontend: build("frontend") };
+export const phasesOf = (track: TrackId) => byTrack[track];
+/** Every phase in every track (phase ids are unique across tracks). */
+export const phases: Phase[] = [...byTrack.ai, ...byTrack.dsa, ...byTrack.frontend];
+export const trackFromPath = (path: string): TrackId => {
+  const id = path.startsWith("/phase/") ? path.slice(7) : null;
+  if (id) return phases.find((p) => p.id === id)?.track ?? "ai";
+  return path.startsWith("/dsa") ? "dsa" : path.startsWith("/frontend") ? "frontend" : "ai";
+};
 
 export const LEVEL_LABEL: Record<Level, string> = {
   foundation: "Foundation",

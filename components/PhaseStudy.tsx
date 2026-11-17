@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { LEVEL_LABEL, PHASE_META, Phase, Topic, phases } from "@/lib/roadmap";
+import { LEVEL_LABEL, PHASE_META, Phase, TRACKS, Topic, phases, phasesOf } from "@/lib/roadmap";
 import { phaseProgress, useProgress } from "@/lib/progress";
 import { conceptsFor, problems, technologies } from "@/lib/concepts";
 import ConceptCard from "./ConceptCard";
@@ -150,8 +150,9 @@ export default function PhaseStudy({ phaseId }: { phaseId: string }) {
   const v = s.total ? Math.round((s.done / s.total) * 100) : 0;
   const cs = conceptsFor(phase.id);
   const studied = cs.filter((c) => done[`concept.${c.id}`]).length;
-  const prev = phases[phase.index - 1];
-  const next = phases[phase.index + 1];
+  const track = phasesOf(phase.track);
+  const prev = track[phase.index - 1];
+  const next = track[phase.index + 1];
   const isSD = phase.id === "system-design";
   const scn = scenariosFor(phase.id);
 
@@ -174,7 +175,7 @@ export default function PhaseStudy({ phaseId }: { phaseId: string }) {
   return (
     <main className="study">
       <aside className="toc" aria-label="On this page">
-        <Link href="/" className="toc-back">← Roadmap</Link>
+        <Link href={TRACKS[phase.track].href} className="toc-back">← Roadmap</Link>
         <ul>
           {toc.map((x) => <li key={x.id} className={x.sub ? "sub" : ""}><a href={`#${x.id}`}>{x.label}</a></li>)}
         </ul>
@@ -184,7 +185,7 @@ export default function PhaseStudy({ phaseId }: { phaseId: string }) {
         <header className="study-hero">
           <div className="study-ico">{meta.icon}</div>
           <div className="study-hero-text">
-            <div className="ph-top"><span className="num">Phase {phase.index + 1} of {phases.length}</span><span className={`lv lv-${phase.level}`}>{LEVEL_LABEL[phase.level]}</span></div>
+            <div className="ph-top"><span className="num">Phase {phase.index + 1} of {track.length}</span><span className={`lv lv-${phase.level}`}>{LEVEL_LABEL[phase.level]}</span></div>
             <h1>{phase.title}</h1>
             <p>{phase.tagline}</p>
             <div className="pills">

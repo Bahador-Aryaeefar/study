@@ -1,0 +1,837 @@
+[
+ {
+  "id": "fe-js-core",
+  "icon": "🟨",
+  "short": "JS Core",
+  "title": "JavaScript Fundamentals",
+  "tagline": "Before Thursday. The multiple-choice favourites: scope, closures, this, coercion.",
+  "level": "foundation",
+  "color": "",
+  "topics": [
+   {
+    "id": "types",
+    "title": "Types, equality and coercion",
+    "summary": "Predict what weird expressions return.",
+    "items": [
+     "7 primitives (string, number, bigint, boolean, undefined, symbol, null) vs objects",
+     "typeof null === 'object', typeof [] === 'object', typeof function(){} === 'function'",
+     "== coerces, === does not; always use === except `x == null`",
+     "Falsy values: false, 0, -0, 0n, '', null, undefined, NaN (everything else is truthy, including [] and {})",
+     "NaN !== NaN; use Number.isNaN",
+     "0.1 + 0.2 !== 0.3 (floating point); compare with a tolerance",
+     "Objects compare by reference: {} === {} is false"
+    ],
+    "questions": [
+     "What does [] + {} return? And [] == false?",
+     "Difference between null and undefined?",
+     "How do you deep-copy an object? (structuredClone)"
+    ],
+    "resources": [
+     "MDN: Equality comparisons and sameness",
+     "javascript.info: Type conversions"
+    ],
+    "concepts": [
+     {
+      "title": "Quick quiz with answers",
+      "body": "- `'5' + 3` → \"53\" (string concatenation wins)\n- `'5' - 3` → 2 (minus forces numbers)\n- `[] == false` → true ([] → \"\" → 0, false → 0)\n- `null == undefined` → true, `null === undefined` → false\n- `null == 0` → false (null only loosely equals undefined)\n- `typeof NaN` → \"number\"\n- `[1, 2] + [3]` → \"1,23\"\n- `!!'0'` → true (non-empty string)"
+     }
+    ]
+   },
+   {
+    "id": "scope",
+    "title": "Scope, hoisting and closures",
+    "summary": "Where variables live and how long they survive.",
+    "items": [
+     "var is function-scoped and hoisted as undefined",
+     "let/const are block-scoped; the temporal dead zone throws before declaration",
+     "const prevents reassignment, not mutation",
+     "Function declarations are hoisted fully; function expressions are not",
+     "A closure is a function plus the variables it captured from where it was created",
+     "Use closures for private state, factories, debounce and memoisation"
+    ],
+    "questions": [
+     "What does a for loop with var and setTimeout log? How do you fix it?",
+     "Explain a closure with an example you would use in real code",
+     "Implement a counter with private state"
+    ],
+    "resources": [
+     "javascript.info: Closures",
+     "MDN: Hoisting"
+    ],
+    "concepts": [
+     {
+      "title": "The classic loop question",
+      "body": "```js\nfor (var i = 0; i < 3; i++) setTimeout(() => console.log(i));\n// 3 3 3  : one shared `i`, read after the loop finished\nfor (let i = 0; i < 3; i++) setTimeout(() => console.log(i));\n// 0 1 2  : `let` creates a new binding per iteration\n```\nClosure for private state:\n```js\nfunction counter() {\n  let n = 0;\n  return { inc: () => ++n, get: () => n };\n}\n```"
+     }
+    ]
+   },
+   {
+    "id": "this",
+    "title": "this, functions and classes",
+    "summary": "this depends on how a function is called.",
+    "items": [
+     "Method call obj.f(): this = obj; plain call f(): undefined in strict mode",
+     "Arrow functions don't have their own this; they use the surrounding one",
+     "call/apply/bind set this explicitly",
+     "Prototype chain: objects delegate missing properties to their prototype",
+     "class is syntax over prototypes; know constructor, extends, super, static, #private"
+    ],
+    "questions": [
+     "Why does a method lose `this` when passed as a callback? Two ways to fix it",
+     "Arrow vs regular function: three differences"
+    ],
+    "resources": [
+     "MDN: this",
+     "javascript.info: Prototypal inheritance"
+    ],
+    "concepts": [
+     {
+      "title": "Losing this",
+      "body": "```js\nconst user = { name: \"Ana\", hi() { return this.name; } };\nconst f = user.hi;\nf();                    // TypeError/undefined: called without an object\nf.call(user);           // \"Ana\"\nconst g = user.hi.bind(user); g(); // \"Ana\"\n```\nArrow functions as class fields keep `this` bound to the instance, which is why React class handlers used them."
+     }
+    ]
+   },
+   {
+    "id": "arrays-objects",
+    "title": "Arrays, objects and modern syntax",
+    "summary": "The everyday toolkit.",
+    "items": [
+     "map, filter, reduce, find, some, every, includes, flat, flatMap",
+     "Mutating (push, splice, sort, reverse) vs non-mutating (slice, toSorted, concat)",
+     "Destructuring with defaults, rest and spread",
+     "Optional chaining a?.b and nullish coalescing a ?? b (vs ||)",
+     "Map/Set vs plain objects; Object.entries / fromEntries",
+     "Shallow copies: {...obj}, [...arr]; deep: structuredClone"
+    ],
+    "questions": [
+     "Implement groupBy with reduce",
+     "Difference between ?? and ||",
+     "Why does [10, 1, 2].sort() give [1, 10, 2]?"
+    ],
+    "resources": [
+     "MDN: Array"
+    ],
+    "concepts": [
+     {
+      "title": "reduce by example",
+      "body": "```js\nconst groupBy = (arr, key) =>\n  arr.reduce((acc, x) => {\n    (acc[x[key]] ??= []).push(x);\n    return acc;\n  }, {});\n[10, 1, 2].sort();             // [1, 10, 2] : default sort compares strings\n[10, 1, 2].sort((a, b) => a - b); // [1, 2, 10]\n0 || 5   // 5     0 ?? 5   // 0\n```"
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "The falsy list and the == traps",
+    "var vs let vs const, hoisting and the TDZ",
+    "What a closure is, with an example",
+    "The four rules of this"
+   ],
+   "mustDo": [
+    "Answer the quiz questions in this phase without running code, then check them in the console",
+    "Write debounce from memory"
+   ],
+   "configs": [
+    {
+     "title": "debounce",
+     "lang": "js",
+     "note": "Closures + timers. A very common live question.",
+     "code": "function debounce(fn, ms) {\n  let t;\n  return function (...args) {\n    clearTimeout(t);\n    t = setTimeout(() => fn.apply(this, args), ms);\n  };\n}"
+    }
+   ]
+  }
+ },
+ {
+  "id": "fe-js-async",
+  "icon": "⏳",
+  "short": "Async",
+  "title": "Async JavaScript and the Event Loop",
+  "tagline": "Before Thursday. Output-order questions are a test favourite.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "event-loop",
+    "title": "The event loop",
+    "summary": "Call stack, microtasks, macrotasks: in that order.",
+    "items": [
+     "JS runs one call stack to completion, then drains ALL microtasks, then takes one macrotask",
+     "Microtasks: promise callbacks (then/catch/finally), await continuations, queueMicrotask",
+     "Macrotasks: setTimeout, setInterval, I/O, UI events",
+     "setTimeout(fn, 0) still waits for the stack and all microtasks",
+     "Rendering happens between macrotasks; long tasks freeze the UI"
+    ],
+    "questions": [
+     "Predict the output order of a snippet mixing console.log, setTimeout and Promise.then",
+     "Why doesn't setTimeout(fn, 0) run immediately?"
+    ],
+    "resources": [
+     "javascript.info: Event loop",
+     "Jake Archibald: In The Loop (talk)"
+    ],
+    "concepts": [
+     {
+      "title": "Output order",
+      "body": "```js\nconsole.log(1);\nsetTimeout(() => console.log(2), 0);\nPromise.resolve().then(() => console.log(3));\n(async () => { console.log(4); await null; console.log(5); })();\nconsole.log(6);\n// 1 4 6 3 5 2\n```\nSync first (1, 4, 6). Then microtasks in order queued (3, then 5). Then the timeout (2)."
+     }
+    ]
+   },
+   {
+    "id": "promises",
+    "title": "Promises and async/await",
+    "summary": "Write async code that handles failure.",
+    "items": [
+     "Promise states: pending, fulfilled, rejected",
+     "Chaining: return values and thrown errors flow down the chain",
+     "async functions always return a promise; await unwraps one",
+     "try/catch around await; unhandled rejections",
+     "Promise.all (fail fast), allSettled, race, any",
+     "Run independent requests in parallel, not one after another"
+    ],
+    "questions": [
+     "Promise.all vs Promise.allSettled: when to use each?",
+     "What is wrong with `await` inside a forEach?",
+     "Implement a sleep(ms) helper"
+    ],
+    "resources": [
+     "MDN: Using promises"
+    ],
+    "concepts": [
+     {
+      "title": "Sequential vs parallel",
+      "body": "```js\n// slow: one after another\nconst a = await getUser(); const b = await getOrders();\n// fast: both at once\nconst [user, orders] = await Promise.all([getUser(), getOrders()]);\nconst sleep = (ms) => new Promise((r) => setTimeout(r, ms));\n```\nforEach ignores returned promises, so `await` inside it does not wait. Use for...of or Promise.all with map."
+     }
+    ]
+   },
+   {
+    "id": "fetch",
+    "title": "fetch and error handling",
+    "summary": "Real network code: status codes, aborts, retries.",
+    "items": [
+     "fetch only rejects on network failure; check res.ok for 4xx/5xx",
+     "res.json() returns a promise",
+     "AbortController to cancel (e.g. when the user types again)",
+     "Loading, error and empty states in the UI"
+    ],
+    "questions": [
+     "Write a fetchJson helper that throws on non-2xx and supports a timeout"
+    ],
+    "resources": [
+     "MDN: Using Fetch"
+    ],
+    "concepts": [
+     {
+      "title": "fetchJson",
+      "body": "```js\nasync function fetchJson(url, { timeout = 8000, ...opts } = {}) {\n  const ctrl = new AbortController();\n  const id = setTimeout(() => ctrl.abort(), timeout);\n  try {\n    const res = await fetch(url, { ...opts, signal: ctrl.signal });\n    if (!res.ok) throw new Error(`HTTP ${res.status}`);\n    return await res.json();\n  } finally {\n    clearTimeout(id);\n  }\n}\n```"
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Microtasks run before the next macrotask",
+    "fetch does not reject on 404",
+    "Parallel requests with Promise.all"
+   ],
+   "mustDo": [
+    "Predict 3 output-order snippets correctly",
+    "Write fetchJson and a promise-based sleep from memory"
+   ],
+   "configs": [
+    {
+     "title": "Promise.all from scratch",
+     "lang": "js",
+     "note": "Sometimes asked as a live question.",
+     "code": "function all(promises) {\n  return new Promise((resolve, reject) => {\n    const out = []; let left = promises.length;\n    if (left === 0) return resolve(out);\n    promises.forEach((p, i) =>\n      Promise.resolve(p).then((v) => {\n        out[i] = v;\n        if (--left === 0) resolve(out);\n      }, reject));\n  });\n}"
+    }
+   ]
+  }
+ },
+ {
+  "id": "fe-ts",
+  "icon": "🔷",
+  "short": "TypeScript",
+  "title": "TypeScript Essentials",
+  "tagline": "Types that catch bugs without fighting you.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "basics",
+    "title": "Types you use daily",
+    "summary": "Annotate boundaries, let inference do the rest.",
+    "items": [
+     "type vs interface (interfaces merge and extend; types do unions and more)",
+     "Union and literal types: 'idle' | 'loading' | 'error'",
+     "Narrowing with typeof, in, instanceof and discriminated unions",
+     "unknown over any; never for impossible cases",
+     "Optional (?) and readonly; non-null assertion ! and why to avoid it"
+    ],
+    "questions": [
+     "When would you choose type over interface?",
+     "any vs unknown?",
+     "Model a request state so you can't read data while loading"
+    ],
+    "resources": [
+     "TypeScript Handbook: Narrowing"
+    ],
+    "concepts": [
+     {
+      "title": "Discriminated union for UI state",
+      "body": "```ts\ntype State<T> =\n  | { status: \"idle\" }\n  | { status: \"loading\" }\n  | { status: \"error\"; error: string }\n  | { status: \"success\"; data: T };\n\nfunction view(s: State<string[]>) {\n  switch (s.status) {\n    case \"success\": return s.data.length;   // data only exists here\n    case \"error\": return s.error;\n    default: return null;\n  }\n}\n```"
+     }
+    ]
+   },
+   {
+    "id": "generics",
+    "title": "Generics and utility types",
+    "summary": "Reusable, type-safe functions and components.",
+    "items": [
+     "Generic functions: function first<T>(a: T[]): T | undefined",
+     "Constraints: <T extends { id: string }>",
+     "Partial, Required, Pick, Omit, Record, ReturnType",
+     "keyof and indexed access T[K]",
+     "Typing React props, events and useState"
+    ],
+    "questions": [
+     "Write a typed groupBy<T, K extends keyof T>",
+     "What does Omit<User, 'password'> do?"
+    ],
+    "resources": [
+     "TypeScript Handbook: Generics",
+     "Total TypeScript (free tutorials)"
+    ],
+    "concepts": [
+     {
+      "title": "Typed helpers",
+      "body": "```ts\nfunction pluck<T, K extends keyof T>(items: T[], key: K): T[K][] {\n  return items.map((i) => i[key]);\n}\ntype PublicUser = Omit<User, \"password\">;\ntype Draft = Partial<Post>;\nconst handle = (e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value);\n```"
+     }
+    ]
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Narrowing and discriminated unions",
+    "Generics with constraints",
+    "The main utility types"
+   ],
+   "mustDo": [
+    "Type a small API client and its response states"
+   ],
+   "configs": []
+  }
+ },
+ {
+  "id": "fe-html-css",
+  "icon": "🎨",
+  "short": "HTML & CSS",
+  "title": "HTML, CSS and Accessibility",
+  "tagline": "Layouts you can write by hand, and markup that works for everyone.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "html",
+    "title": "Semantic HTML and accessibility",
+    "summary": "Use the right element and most accessibility comes free.",
+    "items": [
+     "header, nav, main, section, article, aside, footer",
+     "button for actions, a for navigation (never a clickable div)",
+     "Every input has a label; forms submit with Enter",
+     "alt text on images; headings in order",
+     "Keyboard: everything reachable with Tab, visible focus, Escape closes modals",
+     "ARIA only when no native element exists (aria-label, aria-expanded, role)"
+    ],
+    "questions": [
+     "Why is a div with onClick worse than a button?",
+     "How would you make a custom dropdown accessible?"
+    ],
+    "resources": [
+     "MDN: Accessibility",
+     "web.dev: Learn Accessibility"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "box-layout",
+    "title": "Box model, flexbox and grid",
+    "summary": "The live-coding basics.",
+    "items": [
+     "Box model: content, padding, border, margin; box-sizing: border-box",
+     "Flexbox: justify-content (main axis), align-items (cross axis), gap, flex: 1",
+     "Grid: grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))",
+     "Center anything: display: grid; place-items: center",
+     "Positioning: relative, absolute (to nearest positioned ancestor), fixed, sticky",
+     "Margin collapsing between vertical block margins"
+    ],
+    "questions": [
+     "Center a div horizontally and vertically, three ways",
+     "Build a responsive card grid without media queries",
+     "Flexbox vs grid: when each?"
+    ],
+    "resources": [
+     "CSS-Tricks: Guide to Flexbox",
+     "CSS-Tricks: Guide to Grid",
+     "Flexbox Froggy / Grid Garden"
+    ],
+    "concepts": [
+     {
+      "title": "Layouts to write from memory",
+      "body": "```css\n.center { display: grid; place-items: center; min-height: 100vh; }\n.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }\n.cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }\n.page { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; } /* header, main, footer */\n.modal { position: fixed; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .5); }\n```"
+     }
+    ]
+   },
+   {
+    "id": "cascade",
+    "title": "Cascade, specificity and responsive",
+    "summary": "Why a style wins, and how pages adapt.",
+    "items": [
+     "Specificity: inline > id > class/attribute/pseudo-class > element",
+     "Later rule wins at equal specificity; !important as a last resort",
+     "rem vs em vs px vs %; vw/vh; clamp() for fluid type",
+     "Mobile-first media queries with min-width",
+     "CSS variables and prefers-color-scheme for theming",
+     "Transforms and opacity animate cheaply; width/top cause layout"
+    ],
+    "questions": [
+     "Which selector wins: .nav a or #menu a?",
+     "rem vs em?"
+    ],
+    "resources": [
+     "MDN: Specificity"
+    ],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Write the five layouts from memory",
+    "button vs div, labels, focus and keyboard",
+    "How specificity is decided"
+   ],
+   "mustDo": [
+    "Build a responsive card grid page with header and footer by hand, no framework"
+   ],
+   "configs": []
+  }
+ },
+ {
+  "id": "fe-react",
+  "icon": "⚛️",
+  "short": "React",
+  "title": "React in Depth",
+  "tagline": "Before Thursday (basics). State, effects and rendering are guaranteed questions.",
+  "level": "core",
+  "color": "",
+  "topics": [
+   {
+    "id": "state",
+    "title": "Components, props and state",
+    "summary": "UI is a function of state.",
+    "items": [
+     "Props flow down, events flow up via callbacks",
+     "useState; updates are async and batched; use the functional form for updates based on the previous value",
+     "Never mutate state: create new arrays/objects",
+     "Lift state up to the closest common parent",
+     "Controlled vs uncontrolled inputs",
+     "Derive values during render instead of storing duplicate state"
+    ],
+    "questions": [
+     "Why does setCount(count + 1) twice only add 1?",
+     "Controlled vs uncontrolled components?",
+     "When do you lift state up?"
+    ],
+    "resources": [
+     "react.dev: Learn",
+     "react.dev: Thinking in React"
+    ],
+    "concepts": [
+     {
+      "title": "Updating state correctly",
+      "body": "```jsx\nsetCount((c) => c + 1);                               // based on previous value\nsetTodos((ts) => [...ts, newTodo]);                    // add\nsetTodos((ts) => ts.filter((t) => t.id !== id));       // remove\nsetTodos((ts) => ts.map((t) => t.id === id ? { ...t, done: !t.done } : t)); // update\n```"
+     }
+    ]
+   },
+   {
+    "id": "effects",
+    "title": "Effects and hooks",
+    "summary": "Effects synchronise with the outside world, nothing else.",
+    "items": [
+     "useEffect runs after render; the dependency array controls when",
+     "Cleanup functions: unsubscribe, clear timers, abort fetches",
+     "Avoid effects for derived data or event handling",
+     "useRef for DOM nodes and mutable values that don't re-render",
+     "useMemo / useCallback only for expensive work or stable references",
+     "Custom hooks to reuse stateful logic (useDebounce, useFetch)",
+     "Rules of hooks: top level only, only in components or hooks"
+    ],
+    "questions": [
+     "What happens with a missing dependency? An object as a dependency?",
+     "Why does an effect run twice in development (Strict Mode)?",
+     "Write a useDebounce hook"
+    ],
+    "resources": [
+     "react.dev: You Might Not Need an Effect",
+     "react.dev: Synchronizing with Effects"
+    ],
+    "concepts": [
+     {
+      "title": "Fetch in an effect, done right",
+      "body": "```jsx\nuseEffect(() => {\n  const ctrl = new AbortController();\n  setStatus(\"loading\");\n  fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })\n    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))\n    .then((d) => { setData(d); setStatus(\"success\"); })\n    .catch((e) => { if (e.name !== \"AbortError\") setStatus(\"error\"); });\n  return () => ctrl.abort();      // cancel the stale request\n}, [q]);\n```\nIn real apps prefer a data library (TanStack Query, SWR) or the framework's loader."
+     }
+    ]
+   },
+   {
+    "id": "rendering",
+    "title": "Rendering and performance",
+    "summary": "Know why a component re-renders.",
+    "items": [
+     "Re-render triggers: own state change, parent re-render, context change",
+     "Keys: stable ids, not array indexes for reorderable lists",
+     "React.memo + stable props to skip re-renders",
+     "Context re-renders all consumers; split contexts",
+     "Lazy loading with React.lazy and Suspense; code splitting",
+     "Virtualise long lists"
+    ],
+    "questions": [
+     "Why are index keys a problem?",
+     "A list of 10,000 rows is slow. What do you check?"
+    ],
+    "resources": [
+     "react.dev: Preserving and Resetting State"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "ecosystem",
+    "title": "Next.js and the ecosystem",
+    "summary": "What you already use, explained clearly.",
+    "items": [
+     "CSR vs SSR vs SSG vs ISR, and why SSR helps SEO (your CRSTRIP Nuxt work)",
+     "Server Components vs Client Components in the Next.js App Router",
+     "Routing, layouts and loading states",
+     "State: local state, context, Zustand/Redux, server cache (TanStack Query)",
+     "Forms and validation (react-hook-form + zod)"
+    ],
+    "questions": [
+     "SSR vs CSR trade-offs?",
+     "Where should server data live in a React app?"
+    ],
+    "resources": [
+     "Next.js docs: Rendering"
+    ],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Functional state updates and immutability",
+    "Effect dependencies and cleanup",
+    "What causes re-renders and how keys work"
+   ],
+   "mustDo": [
+    "Build by hand: counter, todo list with add/toggle/delete, search with debounce and fetch"
+   ],
+   "configs": [
+    {
+     "title": "useDebounce",
+     "lang": "tsx",
+     "note": "Custom hook; pairs with the search box exercise.",
+     "code": "function useDebounce<T>(value: T, ms = 300) {\n  const [v, setV] = useState(value);\n  useEffect(() => {\n    const t = setTimeout(() => setV(value), ms);\n    return () => clearTimeout(t);\n  }, [value, ms]);\n  return v;\n}"
+    }
+   ]
+  }
+ },
+ {
+  "id": "fe-browser",
+  "icon": "🌐",
+  "short": "Browser",
+  "title": "The Browser, Performance and Security",
+  "tagline": "How the page actually works, and what a bank cares about.",
+  "level": "advanced",
+  "color": "",
+  "topics": [
+   {
+    "id": "dom-events",
+    "title": "DOM and events",
+    "summary": "Bubbling, delegation, and not leaking listeners.",
+    "items": [
+     "Event phases: capture, target, bubble; stopPropagation vs preventDefault",
+     "Event delegation: one listener on a parent, check event.target",
+     "Remove listeners and observers on cleanup",
+     "IntersectionObserver for lazy loading and infinite scroll"
+    ],
+    "questions": [
+     "What is event delegation and why use it?",
+     "preventDefault vs stopPropagation?"
+    ],
+    "resources": [
+     "javascript.info: Bubbling and capturing"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "perf",
+    "title": "Rendering and performance",
+    "summary": "Fast first load, smooth interaction.",
+    "items": [
+     "Critical rendering path: HTML → DOM, CSS → CSSOM, layout, paint, composite",
+     "Core Web Vitals: LCP (load), INP (responsiveness), CLS (layout shift)",
+     "Reduce bundle size: code splitting, tree shaking, analyse the bundle (your 32% at HARA AI)",
+     "Images: modern formats, sizes, lazy loading; fonts: font-display",
+     "Caching: HTTP cache headers, CDN, service workers",
+     "Debounce/throttle expensive handlers"
+    ],
+    "questions": [
+     "How did you cut the bundle by 32%? (have your real answer ready)",
+     "A page feels slow. Walk me through how you'd investigate"
+    ],
+    "resources": [
+     "web.dev: Core Web Vitals",
+     "Chrome DevTools Performance panel"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "security",
+    "title": "Web security",
+    "summary": "Fintech interviewers love this.",
+    "items": [
+     "XSS: never inject untrusted HTML; React escapes by default; beware dangerouslySetInnerHTML",
+     "CSRF: SameSite cookies and tokens",
+     "CORS is enforced by the browser for cross-origin reads; it is not authentication",
+     "Store tokens in httpOnly cookies rather than localStorage when possible",
+     "Content Security Policy; HTTPS everywhere"
+    ],
+    "questions": [
+     "Where would you store an auth token and why?",
+     "What is XSS and how does React help?"
+    ],
+    "resources": [
+     "OWASP Top 10",
+     "MDN: CORS"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "storage-network",
+    "title": "Storage and networking",
+    "summary": "Where data lives in the browser.",
+    "items": [
+     "localStorage vs sessionStorage vs cookies vs IndexedDB",
+     "HTTP methods, status codes, idempotency",
+     "REST vs GraphQL basics; WebSockets / SSE for live data"
+    ],
+    "questions": [
+     "How would you show live balance updates?"
+    ],
+    "resources": [],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Event delegation",
+    "LCP, INP, CLS",
+    "XSS, CSRF and CORS in one sentence each"
+   ],
+   "mustDo": [
+    "Run Lighthouse on Nobatix and note 3 fixes"
+   ],
+   "configs": []
+  }
+ },
+ {
+  "id": "fe-testing",
+  "icon": "🧪",
+  "short": "Testing",
+  "title": "Testing and Edge Cases",
+  "tagline": "The recruiter flagged this. Learn the basics before the technical interview.",
+  "level": "advanced",
+  "color": "",
+  "topics": [
+   {
+    "id": "unit",
+    "title": "Unit tests with Vitest/Jest",
+    "summary": "Arrange, Act, Assert. One behaviour per test.",
+    "items": [
+     "describe / it / expect; toBe vs toEqual",
+     "Test the normal case, edge cases and the failure case",
+     "Name tests as behaviour: 'returns 0 for an empty list'",
+     "Test pure functions first; they are easiest",
+     "Mock time and network with vi.fn / vi.useFakeTimers",
+     "Test async code with async/await and rejects.toThrow"
+    ],
+    "questions": [
+     "What would you test for a formatCurrency(amount, currency) function?",
+     "toBe vs toEqual?",
+     "How do you test a debounce?"
+    ],
+    "resources": [
+     "Vitest docs",
+     "Jest docs: Getting started"
+    ],
+    "concepts": [
+     {
+      "title": "Testing a pure function",
+      "body": "```ts\nimport { describe, it, expect } from \"vitest\";\nimport { formatGBP } from \"./money\";\n\ndescribe(\"formatGBP\", () => {\n  it(\"formats pounds with two decimals\", () => expect(formatGBP(1234.5)).toBe(\"£1,234.50\"));\n  it(\"handles zero\", () => expect(formatGBP(0)).toBe(\"£0.00\"));\n  it(\"handles negatives\", () => expect(formatGBP(-5)).toBe(\"-£5.00\"));\n  it(\"throws on NaN\", () => expect(() => formatGBP(NaN)).toThrow());\n});\n```\nFor money, also mention: store amounts in minor units (pence) as integers to avoid floating point errors."
+     }
+    ]
+   },
+   {
+    "id": "rtl",
+    "title": "Component tests with Testing Library",
+    "summary": "Test like a user: by role and text, not implementation.",
+    "items": [
+     "render, screen.getByRole / getByText / getByLabelText",
+     "userEvent for clicks and typing",
+     "findBy* for async UI; queryBy* to assert something is absent",
+     "Test loading, error and empty states",
+     "Mock fetch or use MSW for network"
+    ],
+    "questions": [
+     "How would you test a login form?",
+     "getBy vs queryBy vs findBy?"
+    ],
+    "resources": [
+     "Testing Library docs: Guiding principles",
+     "Kent C. Dodds: Common mistakes with RTL"
+    ],
+    "concepts": [
+     {
+      "title": "A component test",
+      "body": "```tsx\nimport { render, screen } from \"@testing-library/react\";\nimport userEvent from \"@testing-library/user-event\";\n\nit(\"adds a todo\", async () => {\n  render(<Todos />);\n  await userEvent.type(screen.getByLabelText(/new todo/i), \"Buy milk\");\n  await userEvent.click(screen.getByRole(\"button\", { name: /add/i }));\n  expect(screen.getByText(\"Buy milk\")).toBeInTheDocument();\n});\n\nit(\"ignores empty input\", async () => {\n  render(<Todos />);\n  await userEvent.click(screen.getByRole(\"button\", { name: /add/i }));\n  expect(screen.queryAllByRole(\"listitem\")).toHaveLength(0);\n});\n```"
+     }
+    ]
+   },
+   {
+    "id": "strategy",
+    "title": "Testing strategy",
+    "summary": "What to test and why.",
+    "items": [
+     "Testing pyramid / trophy: many unit, some integration, few end-to-end",
+     "E2E with Playwright or Cypress for critical flows (login, payment)",
+     "Defensive code: validate input, handle errors, show fallback UI",
+     "Error boundaries in React"
+    ],
+    "questions": [
+     "What would you test first in a payments screen?",
+     "How do you decide what NOT to test?"
+    ],
+    "resources": [
+     "Playwright docs"
+    ],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Arrange, Act, Assert",
+    "Normal, edge and failure cases for any function",
+    "getBy / queryBy / findBy"
+   ],
+   "mustDo": [
+    "Set up Vitest in a small project and write 5 tests for one function",
+    "Write 2 Testing Library tests for your todo component"
+   ],
+   "configs": [
+    {
+     "title": "Vitest setup",
+     "lang": "bash",
+     "note": "React + Testing Library in a Vite project.",
+     "code": "npm i -D vitest jsdom @testing-library/react @testing-library/user-event @testing-library/jest-dom\n# vite.config.ts -> test: { environment: \"jsdom\", setupFiles: \"./setup.ts\" }\n# setup.ts -> import \"@testing-library/jest-dom/vitest\";\nnpx vitest"
+    }
+   ]
+  }
+ },
+ {
+  "id": "fe-interview",
+  "icon": "🎯",
+  "short": "Interview",
+  "title": "Live Coding, Design and Your Stories",
+  "tagline": "Put it together: build small things out loud, and tell your experience well.",
+  "level": "interview",
+  "color": "",
+  "topics": [
+   {
+    "id": "live",
+    "title": "Live coding drills",
+    "summary": "Build these by hand in 20-30 minutes each, talking as you go.",
+    "items": [
+     "Counter and toggle with accessible buttons",
+     "Todo list: add, toggle, delete, filter, empty state",
+     "Search box with debounce, fetch, loading and error states",
+     "Accordion / tabs with keyboard support",
+     "Modal with focus handling and Escape to close",
+     "Paginated or infinite list",
+     "Form with validation and error messages"
+    ],
+    "questions": [
+     "Build a transactions list with a filter by category and a total",
+     "Build a currency converter input"
+    ],
+    "resources": [
+     "GreatFrontEnd (free questions)",
+     "BFE.dev"
+    ],
+    "concepts": [
+     {
+      "title": "How to talk while coding",
+      "body": "1. Restate the task and ask 1-2 clarifying questions (empty state? mobile?)\n2. Say the plan: components, state, data flow\n3. Build the simplest working version first\n4. Then add edge cases: empty, loading, error, very long text\n5. Mention what you would add with more time: tests, accessibility, performance\nForgot an API? Say: \"I'd check MDN for the exact signature, but it's roughly...\" and keep going."
+     }
+    ]
+   },
+   {
+    "id": "design",
+    "title": "Frontend system design (light)",
+    "summary": "For a graduate role: structure, data, state.",
+    "items": [
+     "Break the UI into components and decide where state lives",
+     "Data fetching, caching and optimistic updates",
+     "Loading, error, empty and offline states",
+     "Performance: pagination, virtualisation, code splitting",
+     "Accessibility and internationalisation (your 3-language switch at CRSTRIP)"
+    ],
+    "questions": [
+     "Design a transaction history screen for a banking app",
+     "Design an autocomplete component"
+    ],
+    "resources": [
+     "GreatFrontEnd: Front End System Design"
+    ],
+    "concepts": []
+   },
+   {
+    "id": "stories",
+    "title": "Your stories",
+    "summary": "From your CV, ready to say.",
+    "items": [
+     "CRSTRIP: one Nuxt codebase, many white-label sites, SSR, live language switching",
+     "HARA AI: 32% smaller bundle, tag filtering, keyboard navigation, shareable URLs",
+     "Nobatix: double-booking prevention with transactions + Redis, snapshot data model",
+     "MSc: compression bias toolkit; energy forecasting (Random Forest beat the Transformer)",
+     "A mistake you learned from (e.g. the assessment checklist you now follow)"
+    ],
+    "questions": [
+     "Tell me about a technical challenge you're proud of",
+     "Tell me about a time you worked under pressure",
+     "Why Revolut, and why frontend?"
+    ],
+    "resources": [
+     "Your Revolut_Prep.md on the Desktop"
+    ],
+    "concepts": []
+   }
+  ],
+  "checkpoint": {
+   "mustKnow": [
+    "Your plan-out-loud routine",
+    "The four UI states: loading, error, empty, success"
+   ],
+   "mustDo": [
+    "Build 3 drills by hand, timed, talking out loud",
+    "Say each story once out loud"
+   ],
+   "configs": []
+  }
+ }
+]
