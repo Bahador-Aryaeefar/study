@@ -1,7 +1,7 @@
 {
   "id": "deep-learning",
-  "title": "Deep Learning and Transformers",
-  "tagline": "Understand the machinery under every LLM: from backprop to attention to scaling laws.",
+  "title": "Deep Learning, Transformers and LLM Training",
+  "tagline": "From a single neuron to frontier-model training: every architecture, objective, scaling rule and research practice you need to publish.",
   "level": "core",
   "color": "#a78bfa",
   "topics": [
@@ -17,10 +17,65 @@
         "Mixed precision (fp16, bf16, fp8), gradient accumulation",
         "Checkpointing, reproducibility, seeding",
         "Debugging training: loss curves, overfit-one-batch, gradient norms",
-        "CNNs and RNN/LSTM basics (why they were superseded)"
+        "CNNs and RNN/LSTM basics (why they were superseded)",
+        "Activation functions: derivatives, saturation, dying ReLU, GELU/SwiGLU; He/Xavier derivation",
+        "Loss catalog: Huber, focal, contrastive/triplet/InfoNCE, CTC, Dice; matching loss to noise model",
+        "Regularisation: dropout, AdamW decay, mixup/CutMix, label smoothing, stochastic depth, SAM",
+        "Training recipes: LR range test, warmup+cosine/WSD, linear scaling rule, critical batch size, clipping, EMA",
+        "Numerics: fp16 loss scaling, bf16, fp8; log-sum-exp; the 9-step debugging playbook"
       ],
-      "questions": ["Your loss is NaN after 200 steps. What do you check?", "LayerNorm vs BatchNorm: why do transformers use LayerNorm/RMSNorm?"],
-      "resources": ["Karpathy: Neural Networks Zero to Hero", "Dive into Deep Learning (d2l.ai)", "fast.ai Practical Deep Learning"]
+      "questions": [
+        "Your loss is NaN after 200 steps. What do you check?",
+        "LayerNorm vs BatchNorm: why do transformers use LayerNorm/RMSNorm?"
+      ],
+      "resources": [
+        "Karpathy: Neural Networks Zero to Hero",
+        "Dive into Deep Learning (d2l.ai)",
+        "fast.ai Practical Deep Learning"
+      ]
+    },
+    {
+      "id": "cnn-vision",
+      "title": "Convolutional and vision networks",
+      "summary": "Convolution math, ResNets, ViT, detection, segmentation, transfer learning.",
+      "items": [
+        "Convolution: output size formula, params, MACs, receptive field, dilation, depthwise-separable, 1x1",
+        "ResNet and the degradation problem; DenseNet, EfficientNet compound scaling, ConvNeXt",
+        "Vision Transformer, Swin, MAE, DINO; patch embedding as a strided convolution",
+        "Detection: Faster R-CNN, YOLO/RetinaNet with focal loss, DETR, NMS, mAP",
+        "Segmentation: U-Net, DeepLab, Mask R-CNN, SAM; Dice + CE",
+        "Transfer learning recipe: freeze, layer-wise LR decay, linear-probe baseline"
+      ],
+      "questions": [
+        "Compute output shape and params of a strided conv.",
+        "Why do residual connections enable depth?"
+      ],
+      "resources": [
+        "CS231n",
+        "Dive into Deep Learning",
+        "Original papers: ResNet, ViT, U-Net, YOLO"
+      ]
+    },
+    {
+      "id": "sequence-models",
+      "title": "Sequence models and the road to attention",
+      "summary": "RNN/LSTM/GRU, BPTT, seq2seq, Bahdanau attention.",
+      "items": [
+        "BPTT and why gradients vanish/explode; clipping",
+        "LSTM and GRU gates, forget-gate bias, bidirectional/stacked RNNs",
+        "Seq2seq bottleneck and additive/multiplicative attention",
+        "Teacher forcing, exposure bias, scheduled sampling",
+        "Why Transformers displaced RNNs and where recurrence returns (SSMs, RWKV)"
+      ],
+      "questions": [
+        "Derive RNN gradient vanishing.",
+        "What is exposure bias?"
+      ],
+      "resources": [
+        "Karpathy: The Unreasonable Effectiveness of RNNs",
+        "Colah: Understanding LSTMs",
+        "Bahdanau et al. 2014"
+      ]
     },
     {
       "id": "transformers",
@@ -38,7 +93,12 @@
         "Mixture of Experts: routing, load balancing, why it saves compute",
         "State-space models and hybrids (Mamba) at a conceptual level",
         "Long-context techniques: RoPE scaling, YaRN, ring attention",
-        "Implement a GPT from scratch (nanoGPT)"
+        "Implement a GPT from scratch (nanoGPT)",
+        "Attention derivation, shapes, masks, cost; why 1/sqrt(d_k); induction heads",
+        "Parameter count (~12 d^2 per block), FLOPs (2N forward, 6N training), KV-cache size formula",
+        "Decoding: greedy, beam, top-k/top-p/min-p, speculative decoding",
+        "Online softmax and FlashAttention tiling; paged attention; prefill vs decode",
+        "Selective state-space models: S4 convolution vs recurrence, Mamba selection, hybrids"
       ],
       "questions": [
         "Why divide by sqrt(d_k) in attention?",
@@ -46,7 +106,12 @@
         "MQA vs GQA vs MHA: trade-offs for inference?",
         "How does RoPE encode relative position?"
       ],
-      "resources": ["Attention Is All You Need", "The Illustrated Transformer", "Karpathy: Let's build GPT", "FlashAttention paper"],
+      "resources": [
+        "Attention Is All You Need",
+        "The Illustrated Transformer",
+        "Karpathy: Let's build GPT",
+        "FlashAttention paper"
+      ],
       "concepts": [
         {
           "title": "KV cache memory math",
@@ -71,8 +136,15 @@
         "Embedding dimensionality, normalization, similarity metrics",
         "Multimodal embeddings (CLIP-style)"
       ],
-      "questions": ["Why do LLMs struggle with counting letters in a word?", "How do you choose an embedding model for your domain?"],
-      "resources": ["Karpathy: Let's build the GPT Tokenizer", "HF tokenizers docs", "MTEB leaderboard"]
+      "questions": [
+        "Why do LLMs struggle with counting letters in a word?",
+        "How do you choose an embedding model for your domain?"
+      ],
+      "resources": [
+        "Karpathy: Let's build the GPT Tokenizer",
+        "HF tokenizers docs",
+        "MTEB leaderboard"
+      ]
     },
     {
       "id": "pretraining",
@@ -87,10 +159,20 @@
         "ZeRO / FSDP, activation checkpointing",
         "Training stability: loss spikes, z-loss, precision issues",
         "Hardware: GPU memory hierarchy, NVLink, InfiniBand, TPUs",
-        "Emergent abilities and the debate around them"
+        "Emergent abilities and the debate around them",
+        "Data pipeline details: language ID, quality classifiers, MinHash-LSH dedup, 13-gram decontamination, packing with document masking",
+        "Compute and memory accounting: 6ND, 16 bytes/param for AdamW, MFU, GPU-hour estimates",
+        "Parallelism math: ring all-reduce cost, pipeline bubble (p-1)/(m+p-1), ZeRO stages, 3D parallelism"
       ],
-      "questions": ["Why train smaller models on more tokens than Chinchilla suggests?", "Explain FSDP vs tensor parallelism."],
-      "resources": ["Chinchilla paper", "Hugging Face Ultra-Scale Playbook", "Llama 3 paper"]
+      "questions": [
+        "Why train smaller models on more tokens than Chinchilla suggests?",
+        "Explain FSDP vs tensor parallelism."
+      ],
+      "resources": [
+        "Chinchilla paper",
+        "Hugging Face Ultra-Scale Playbook",
+        "Llama 3 paper"
+      ]
     },
     {
       "id": "post-training",
@@ -105,10 +187,66 @@
         "Reasoning models: chain-of-thought training, test-time compute",
         "Reward hacking, sycophancy, mode collapse",
         "Distillation and model merging",
-        "Parameter-efficient fine-tuning: LoRA, QLoRA, adapters, prefix tuning"
+        "Parameter-efficient fine-tuning: LoRA, QLoRA, adapters, prefix tuning",
+        "Derive the Bradley-Terry reward loss and the DPO objective from the KL-regularised optimum",
+        "GRPO advantage normalisation; process vs outcome rewards; over-optimisation curves",
+        "Quantisation (GPTQ, AWQ, SmoothQuant, NF4), pruning (SparseGPT), merging (TIES, DARE), roofline view of decoding"
       ],
-      "questions": ["DPO vs PPO-based RLHF: when and why?", "What is reward hacking? Give an example.", "How does GRPO remove the need for a value model?"],
-      "resources": ["InstructGPT paper", "DPO paper", "DeepSeek-R1 paper", "Hugging Face TRL docs"]
+      "questions": [
+        "DPO vs PPO-based RLHF: when and why?",
+        "What is reward hacking? Give an example.",
+        "How does GRPO remove the need for a value model?"
+      ],
+      "resources": [
+        "InstructGPT paper",
+        "DPO paper",
+        "DeepSeek-R1 paper",
+        "Hugging Face TRL docs"
+      ]
+    },
+    {
+      "id": "other-architectures",
+      "title": "Graphs, self-supervised and multimodal learning",
+      "summary": "GNNs, contrastive/masked/non-contrastive SSL, CLIP.",
+      "items": [
+        "Message passing, GCN normalisation, GAT, GIN and 1-WL expressiveness, over-smoothing/over-squashing",
+        "Contrastive (SimCLR, MoCo, CLIP), non-contrastive (BYOL, DINO, VICReg) and representation collapse",
+        "Masked modelling (BERT, MAE, data2vec) and linear-probe vs fine-tune evaluation",
+        "Multimodal LLMs: vision encoder + projector + LLM; SigLIP",
+        "Matryoshka and instruction-aware embedding models; MTEB/BEIR evaluation"
+      ],
+      "questions": [
+        "Why does BYOL not collapse?",
+        "Why must the GNN aggregator be permutation-invariant?"
+      ],
+      "resources": [
+        "Hamilton: Graph Representation Learning",
+        "Lilian Weng: Self-supervised learning",
+        "CLIP paper"
+      ]
+    },
+    {
+      "id": "dl-research",
+      "title": "Research practice in deep learning",
+      "summary": "Interpretability, robustness, experiment design, writing and publishing.",
+      "items": [
+        "Attribution (IG, Grad-CAM, SHAP) and sanity checks; probing with control tasks",
+        "Mechanistic interpretability: residual stream, circuits, activation patching, sparse autoencoders",
+        "Adversarial robustness (FGSM/PGD, adversarial training), OOD shift, shortcut learning, worst-group accuracy",
+        "Calibration and conformal prediction; fairness criteria and impossibility results",
+        "Baselines, ablations, equal tuning budgets, seeds, contamination checks, reproducibility checklist",
+        "Choosing a problem, related-work table, paper structure, IEEE/ISI venue selection and rebuttals"
+      ],
+      "questions": [
+        "What ablations for a new attention mechanism?",
+        "How do you make a comparison fair?"
+      ],
+      "resources": [
+        "NeurIPS paper checklist",
+        "Papers With Code",
+        "Distill / Transformer Circuits thread",
+        "IEEE Author Center"
+      ]
     }
   ]
 }
