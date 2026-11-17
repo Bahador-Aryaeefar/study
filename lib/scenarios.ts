@@ -1,6 +1,7 @@
 import s1 from "@/data/scenarios-1.json";
 import s2 from "@/data/scenarios-2.json";
 import s3 from "@/data/scenarios-3.json";
+import sm from "@/data/scenarios-math.json";
 
 export interface Scenario {
   id: string;
@@ -12,5 +13,5 @@ export interface Scenario {
   followups?: { q: string; a: string }[];
 }
 
-export const scenarios = [...(s1 as Scenario[]), ...(s2 as Scenario[]), ...(s3 as Scenario[])];
+export const scenarios = [...(s1 as Scenario[]), ...(s2 as Scenario[]), ...(s3 as Scenario[]), ...(sm as Scenario[])];
 export const scenariosFor = (phaseId: string) => scenarios.filter((s) => s.phase === phaseId);

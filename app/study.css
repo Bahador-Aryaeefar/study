@@ -330,3 +330,8 @@ html { scroll-padding-top: 130px; }
 .scn-steps ul li { margin: 4px 0; }
 .scn-steps ul li::marker { color: var(--orange); }
 .scn-fu { margin: 8px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+
+.mathblock { margin: 10px 0 14px; padding: 12px 16px; background: var(--c-t1); border: 1px solid var(--line); border-left: 3px solid var(--orange); border-radius: 10px; overflow-x: auto; font-size: 1.05em; }
+.tex .katex { font-size: 1.04em; }
+.mathblock .katex-display { margin: 0; }
+:root[data-theme="dark"] .katex { color: var(--text); }

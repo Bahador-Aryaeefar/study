@@ -1,0 +1,24 @@
+[
+  {"id":"m-nan-loss","phase":"math-ml","kind":"incident","title":"Training loss becomes NaN at step 4,000","situation":"A transformer trains fine, then loss spikes and turns NaN. Same code worked at a smaller scale.",
+   "steps":[
+    {"label":"Locate","items":["Reproduce deterministically (fixed seed, same batch order) and log grad-norm, loss scale and max-abs activations per layer; find the first step with inf/NaN.","Check the batch at that step for bad data (empty target, huge values, NaN in features)."]},
+    {"label":"Likely math causes","items":["Overflow in softmax/exp without log-sum-exp; log(0) in a custom loss; division by a tiny variance (epsilon too small in fp16).","LR too high for the Hessian's largest eigenvalue (stability needs eta < 2/lambda_max): add warmup, lower LR.","fp16 underflow/overflow: use bf16 or dynamic loss scaling; keep norms/softmax in fp32."]},
+    {"label":"Fix","items":["Gradient clipping (global norm), warmup, AdamW eps 1e-8 to 1e-6, pre-LN, QK-norm for attention logit growth.","Add a non-finite check that skips the step and logs the batch; gradient-check custom ops in float64."]}],
+   "followups":[{"q":"How do you know clipping is hiding a real bug?","a":"If clipping is active on most steps, the effective LR is lower than configured and the instability is still there. Track the fraction of clipped steps; fix the root cause (LR, init, data) until it is rare."}]},
+  {"id":"m-not-significant","phase":"math-ml","kind":"incident","title":"Reviewer: 'your +0.4% gain is within noise'","situation":"Your journal submission got a major revision. The main table has single-run numbers and the improvement is small.",
+   "steps":[
+    {"label":"Quantify","items":["Run >=5-10 seeds for your method and every baseline with identical data order policy; report mean +- std and a 95% CI of the paired difference.","Do a power analysis: n ~ 2((1.96+0.84) sigma / delta)^2; if you cannot reach it, say the effect is not established."]},
+    {"label":"Strengthen","items":["Paired bootstrap over test items; Wilcoxon/Friedman across datasets; Holm correction for many comparisons.","Re-tune baselines with the same search budget; add ablations that remove each component."]},
+    {"label":"Respond","items":["Point-by-point rebuttal: quote the comment, state the new experiment, show the table/figure, and soften any claim the data does not support."]}],
+   "followups":[{"q":"What if after more seeds the effect disappears?","a":"Report it honestly: reframe the paper around analysis, efficiency (same accuracy, lower cost) or negative results. A smaller true claim is publishable; a false one is not."}]},
+  {"id":"m-overfit","phase":"math-ml","kind":"incident","title":"Train accuracy 99%, validation 71%","situation":"A model on a small dataset generalizes badly.",
+   "steps":[
+    {"label":"Diagnose","items":["Check leakage first (duplicates, shared users, time order); an inflated validation score is a worse problem than a low one.","Plot learning curves vs data size: high variance (large gap) or high bias (both low)?"]},
+    {"label":"Act","items":["High variance: more data/augmentation, weight decay, dropout, early stopping, smaller or pre-trained model, ensembling.","High bias: bigger model, better features, longer training, lower regularization."]}],
+   "followups":[{"q":"Does double descent change this advice?","a":"It means test error can fall again beyond the interpolation threshold, so a larger model may help even when it fits the training set exactly - but verify empirically with a clean validation protocol."}]},
+  {"id":"m-choose-generative","phase":"math-ml","kind":"design","title":"Which generative model for a new paper?","situation":"You must generate realistic medical images from few examples and publish the result in an IEEE journal.",
+   "steps":[
+    {"label":"Choose","items":["Diffusion (conditional or latent) for quality/coverage; a VAE if you need a tractable latent and speed; avoid raw GANs unless you can handle instability and mode collapse.","Few data: fine-tune a pre-trained model with LoRA; consider augmentation and a strong prior."]},
+    {"label":"Evaluate","items":["FID plus precision/recall, nearest-neighbour memorization check, downstream task utility, clinician review.","Statistics over seeds, ablation of conditioning/guidance, privacy and ethics section."]}],
+   "followups":[{"q":"How do you show the model is not memorizing patients?","a":"Nearest-neighbour search in a feature space against the training set, membership-inference attack tests, and a held-out-patient evaluation."}]}
+]

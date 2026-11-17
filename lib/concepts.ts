@@ -10,6 +10,7 @@ import nc from "@/data/concepts-new.json";
 import nc2 from "@/data/concepts-new2.json";
 import p1 from "@/data/concepts-p1.json";
 import p2 from "@/data/concepts-p2.json";
+import mathConcepts from "@/data/concepts-math";
 
 export interface ConceptDef {
   id: string;
@@ -55,7 +56,7 @@ export interface Tech {
   watchOut: string[];
 }
 
-export const concepts: ConceptDef[] = [...(sd as ConceptDef[]), ...(nc as ConceptDef[]), ...(nc2 as ConceptDef[]), ...(p1 as ConceptDef[]), ...(p2 as ConceptDef[]), ...(ai as ConceptDef[])].map((c) => ({ ...c, ...(usage[c.id] ?? {}), ...(extra[c.id] ?? {}) }));
+export const concepts: ConceptDef[] = [...(sd as ConceptDef[]), ...(nc as ConceptDef[]), ...(nc2 as ConceptDef[]), ...(p1 as ConceptDef[]), ...(p2 as ConceptDef[]), ...(mathConcepts as ConceptDef[]), ...(ai as ConceptDef[])].map((c) => ({ ...c, ...(usage[c.id] ?? {}), ...(extra[c.id] ?? {}) }));
 
 export const conceptsFor = (phaseId: string) => concepts.filter((c) => c.phase === phaseId);
 
