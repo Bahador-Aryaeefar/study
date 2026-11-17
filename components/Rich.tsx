@@ -1,6 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import katex from "katex";
+
+function tex(src: string, display: boolean) {
+  try {
+    return katex.renderToString(src, { displayMode: display, throwOnError: false, strict: false });
+  } catch {
+    return src;
+  }
+}
+
+const INLINE = /(?<![\\$])\$(?![\s\d$])((?:[^$\n\\]|\\.)+?)(?<![\s\\])\$(?!\d)/g;
+
+function Bold({ text }: { text: string }) {
+  const bits = text.split(/\*\*(.+?)\*\*/g);
+  return <>{bits.map((b, i) => (i % 2 ? <strong key={i}>{b}</strong> : b))}</>;
+}
+
+/** Renders text with inline $math$ spans and **bold**. */
+export function Inline({ text }: { text: string }) {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  INLINE.lastIndex = 0;
+  while ((m = INLINE.exec(text))) {
+    if (m.index > last) parts.push(<Bold key={"b" + last} text={text.slice(last, m.index)} />);
+    parts.push(<span key={m.index} className="tex" dangerouslySetInnerHTML={{ __html: tex(m[1], false) }} />);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(<Bold key="bend" text={text.slice(last)} />);
+  return <>{parts}</>;
+}
 
 export function CodeBlock({ code, lang, title, note }: { code: string; lang?: string; title?: string; note?: string }) {
   const [copied, setCopied] = useState(false);
@@ -72,9 +103,10 @@ export function Rich({ body }: { body: string }) {
   return (
     <div className="rich">
       {parse(body).map((b, idx) => {
-        if (b.t === "p") return <p key={idx}>{b.text}</p>;
-        if (b.t === "ul") return <ul key={idx}>{b.items.map((x, j) => <li key={j}>{x}</li>)}</ul>;
-        if (b.t === "ol") return <ol key={idx}>{b.items.map((x, j) => <li key={j}>{x}</li>)}</ol>;
+        if (b.t === "p") return <p key={idx}><Inline text={b.text} /></p>;
+        if (b.t === "ul") return <ul key={idx}>{b.items.map((x, j) => <li key={j}><Inline text={x} /></li>)}</ul>;
+        if (b.t === "ol") return <ol key={idx}>{b.items.map((x, j) => <li key={j}><Inline text={x} /></li>)}</ol>;
+        if (b.lang === "math") return <div key={idx} className="mathblock" dangerouslySetInnerHTML={{ __html: tex(b.code, true) }} />;
         return <CodeBlock key={idx} code={b.code} lang={b.lang} />;
       })}
     </div>

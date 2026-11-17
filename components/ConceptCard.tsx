@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ConceptDef } from "@/lib/concepts";
 import { useProgress } from "@/lib/progress";
-import { Rich } from "./Rich";
+import { Rich, Inline } from "./Rich";
 import { VizByKey } from "./viz";
 import { Flow, Viz } from "./viz/ui";
 
@@ -58,7 +58,7 @@ export default function ConceptCard({ c }: { c: ConceptDef }) {
             <div className="cmp-scroll">
               <table>
                 <thead><tr>{t.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
-                <tbody>{t.rows.map((r, i) => <tr key={i}>{r.map((cell, j) => <td key={j}>{cell}</td>)}</tr>)}</tbody>
+                <tbody>{t.rows.map((r, i) => <tr key={i}>{r.map((cell, j) => <td key={j}><Inline text={cell} /></td>)}</tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -67,34 +67,34 @@ export default function ConceptCard({ c }: { c: ConceptDef }) {
           <div className="cols ua">
             <div className="use">
               <h4>Use it when</h4>
-              <ul>{(c.use ?? []).map((t) => <li key={t}>{t}</li>)}</ul>
+              <ul>{(c.use ?? []).map((t) => <li key={t}><Inline text={t} /></li>)}</ul>
             </div>
             <div className="avoid">
               <h4>Avoid it when</h4>
-              <ul className="warn">{(c.avoid ?? []).map((t) => <li key={t}>{t}</li>)}</ul>
+              <ul className="warn">{(c.avoid ?? []).map((t) => <li key={t}><Inline text={t} /></li>)}</ul>
             </div>
           </div>
         )}
         <div className="cols">
           <div>
             <h4>Trade-offs</h4>
-            <ul>{c.tradeoffs.map((t) => <li key={t}>{t}</li>)}</ul>
+            <ul>{c.tradeoffs.map((t) => <li key={t}><Inline text={t} /></li>)}</ul>
           </div>
           <div>
             <h4>Common pitfalls</h4>
-            <ul className="warn">{c.pitfalls.map((t) => <li key={t}>{t}</li>)}</ul>
+            <ul className="warn">{c.pitfalls.map((t) => <li key={t}><Inline text={t} /></li>)}</ul>
           </div>
         </div>
         <h4>Interview angles</h4>
-        <ul className="iq">{c.interview.map((t) => <li key={t}>{t}</li>)}</ul>
+        <ul className="iq">{c.interview.map((t) => <li key={t}><Inline text={t} /></li>)}</ul>
         {c.qa && c.qa.length > 0 && (
           <>
             <h4>Interviewer follow-ups, with model answers</h4>
             <div className="qa">
               {c.qa.map((x) => (
                 <details key={x.q}>
-                  <summary>{x.q}</summary>
-                  <p>{x.a}</p>
+                  <summary><Inline text={x.q} /></summary>
+                  <p><Inline text={x.a} /></p>
                 </details>
               ))}
             </div>

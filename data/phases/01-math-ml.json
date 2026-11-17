@@ -1,7 +1,7 @@
 {
   "id": "math-ml",
-  "title": "Math and Classical ML",
-  "tagline": "Enough theory to reason about models, losses, data and failure modes without hand-waving.",
+  "title": "Math & Modern ML (research-grade)",
+  "tagline": "A full path from zero: foundations, classical ML, evaluation, neural nets, then research-grade math and modern ML for ISI/IEEE papers.",
   "level": "foundation",
   "color": "#818cf8",
   "topics": [
@@ -17,8 +17,15 @@
         "Orthogonality, projections, basis, rank",
         "Tensor shapes and broadcasting (NumPy/PyTorch)"
       ],
-      "questions": ["Why does cosine similarity work for embeddings and when does it not?", "Explain LoRA in terms of low-rank matrices."],
-      "resources": ["3Blue1Brown Essence of Linear Algebra", "Gilbert Strang MIT 18.06", "Mathematics for Machine Learning"]
+      "questions": [
+        "Why does cosine similarity work for embeddings and when does it not?",
+        "Explain LoRA in terms of low-rank matrices."
+      ],
+      "resources": [
+        "3Blue1Brown Essence of Linear Algebra",
+        "Gilbert Strang MIT 18.06",
+        "Mathematics for Machine Learning"
+      ]
     },
     {
       "id": "calculus-optim",
@@ -33,8 +40,16 @@
         "Regularization: L1, L2, weight decay, dropout",
         "Vanishing and exploding gradients, gradient clipping"
       ],
-      "questions": ["Derive backprop for a two-layer MLP.", "Why AdamW over Adam with L2?", "Why do transformers need LR warmup?"],
-      "resources": ["Deep Learning book ch. 4 and 8", "Karpathy: micrograd", "Distill: Why Momentum Really Works"]
+      "questions": [
+        "Derive backprop for a two-layer MLP.",
+        "Why AdamW over Adam with L2?",
+        "Why do transformers need LR warmup?"
+      ],
+      "resources": [
+        "Deep Learning book ch. 4 and 8",
+        "Karpathy: micrograd",
+        "Distill: Why Momentum Really Works"
+      ]
     },
     {
       "id": "probability-stats",
@@ -51,8 +66,16 @@
         "Sampling: temperature, top-k, top-p, min-p, beam search",
         "Calibration and uncertainty estimation"
       ],
-      "questions": ["Why is cross-entropy the right loss for classification?", "How many samples do you need to detect a 2% improvement in an eval?", "What does temperature do mathematically?"],
-      "resources": ["Think Stats / Think Bayes", "StatQuest videos", "Pattern Recognition and ML (Bishop)"]
+      "questions": [
+        "Why is cross-entropy the right loss for classification?",
+        "How many samples do you need to detect a 2% improvement in an eval?",
+        "What does temperature do mathematically?"
+      ],
+      "resources": [
+        "Think Stats / Think Bayes",
+        "StatQuest videos",
+        "Pattern Recognition and ML (Bishop)"
+      ]
     },
     {
       "id": "classical-ml",
@@ -72,8 +95,16 @@
         "Time series basics and forecasting baselines",
         "scikit-learn pipelines"
       ],
-      "questions": ["When would you pick gradient boosting over a neural network?", "Explain data leakage with an example.", "Precision vs recall: how do you choose a threshold?"],
-      "resources": ["Hands-On ML (Géron)", "Andrew Ng ML Specialization", "Kaggle Learn"]
+      "questions": [
+        "When would you pick gradient boosting over a neural network?",
+        "Explain data leakage with an example.",
+        "Precision vs recall: how do you choose a threshold?"
+      ],
+      "resources": [
+        "Hands-On ML (Géron)",
+        "Andrew Ng ML Specialization",
+        "Kaggle Learn"
+      ]
     },
     {
       "id": "data-skills",
@@ -88,8 +119,87 @@
         "Synthetic data generation and its failure modes",
         "Dataset versioning and lineage"
       ],
-      "questions": ["Write a SQL query for the 7-day rolling average per user.", "How do you detect that production data drifted from training data?"],
-      "resources": ["Mode SQL tutorial", "Polars user guide", "Great Expectations docs"]
+      "questions": [
+        "Write a SQL query for the 7-day rolling average per user.",
+        "How do you detect that production data drifted from training data?"
+      ],
+      "resources": [
+        "Mode SQL tutorial",
+        "Polars user guide",
+        "Great Expectations docs"
+      ]
+    },
+    {
+      "id": "research-math",
+      "title": "Research-grade math toolkit",
+      "summary": "Notation and derivations papers assume you know.",
+      "items": [
+        "Matrix calculus: gradients/Jacobians/Hessians, vec/trace identities, shape discipline",
+        "SVD, eigen, spectral norm, condition number, Eckart-Young, pseudo-inverse",
+        "Probability: Bayes, MLE/MAP, exponential family, Fisher information, Jensen/Hoeffding",
+        "Information theory: entropy, cross-entropy, KL (forward vs reverse), mutual information, InfoNCE",
+        "Optimization theory: convexity, smoothness, convergence rates, SGD noise, Adam, schedules",
+        "Learning theory: bias-variance, PAC/Rademacher, double descent, PAC-Bayes, NTK intuition"
+      ],
+      "questions": [
+        "Derive PCA, softmax-CE gradient, the ELBO and the Adam bias correction from scratch.",
+        "Prove KL is non-negative and explain forward vs reverse KL."
+      ],
+      "resources": [
+        "Mathematics for Machine Learning (Deisenroth)",
+        "Deep Learning (Goodfellow) ch.2-8",
+        "Understanding Machine Learning (Shalev-Shwartz)",
+        "Probabilistic ML (Murphy)"
+      ]
+    },
+    {
+      "id": "modern-ml",
+      "title": "Modern ML (not classical)",
+      "summary": "Transformers, self-supervised, generative, RL and alignment.",
+      "items": [
+        "Attention/transformer math, normalization, positional encodings, FlashAttention",
+        "Scaling laws, compute-optimal training, emergent abilities and their critiques",
+        "Self-supervised/contrastive learning, representation collapse",
+        "Generative models: VAE/ELBO, GAN, diffusion/score matching, flows, autoregressive",
+        "Policy gradient, PPO, RLHF, DPO, reward hacking",
+        "Bayesian deep learning, ensembles, calibration, uncertainty",
+        "Parameter-efficient fine-tuning (LoRA), quantization, distillation",
+        "Interpretability and robustness basics"
+      ],
+      "questions": [
+        "Compare PPO-RLHF and DPO.",
+        "Why does diffusion training reduce to noise prediction?"
+      ],
+      "resources": [
+        "The Annotated Transformer",
+        "Lilian Weng blog (diffusion, RL, attention)",
+        "Dive into Deep Learning",
+        "Original papers: Attention Is All You Need, DDPM, PPO, DPO, Chinchilla"
+      ]
+    },
+    {
+      "id": "research-craft",
+      "title": "Research methods & publishing (ISI / IEEE)",
+      "summary": "Read papers fast, design sound experiments, write and publish.",
+      "items": [
+        "3-pass paper reading, notation tables, claim vs evidence audit",
+        "Experiment design: baselines, ablations, seeds, splits, leakage checks",
+        "Statistics: CI, paired bootstrap, Welch t, Wilcoxon, Friedman, multiple-comparison correction, power",
+        "Reproducibility: seeds, configs, versions, released code, results from scripts",
+        "LaTeX + IEEEtran, BibTeX, figures/tables that stand alone",
+        "Journal selection (Web of Science/Scopus, scope, impact), cover letter, peer review, rebuttal",
+        "Research ethics: plagiarism, data licences, AI-use disclosure, limitations"
+      ],
+      "questions": [
+        "A reviewer says your gain is within noise - what do you do?",
+        "What goes in an ablation study?"
+      ],
+      "resources": [
+        "IEEE Author Center",
+        "How to Read a Paper (Keshav)",
+        "Papers With Code reproducibility checklist",
+        "NeurIPS paper checklist"
+      ]
     }
   ]
 }

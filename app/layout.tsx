@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./study.css";
+import "katex/dist/katex.min.css";
 import { ProgressProvider } from "@/lib/progress";
 import SiteNav from "@/components/SiteNav";
 
