@@ -14,7 +14,7 @@ function tex(src: string, display: boolean) {
 const INLINE = /(?<![\\$])\$(?![\s\d$])((?:[^$\n\\]|\\.)+?)(?<![\s\\])\$(?!\d)/g;
 
 function Bold({ text }: { text: string }) {
-  const bits = text.split(/\*\*(.+?)\*\*/g);
+  const bits = text.replace(/\r/g, "").split(/\*\*(.+?)\*\*/g);
   return <>{bits.map((b, i) => (i % 2 ? <strong key={i}>{b}</strong> : b))}</>;
 }
 
@@ -68,7 +68,8 @@ type Block =
   | { t: "code"; lang: string; code: string };
 
 function parse(body: string): Block[] {
-  const lines = body.split("\n");
+  // Normalise Windows line endings so server and client render identical text (avoids hydration mismatches).
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
   const out: Block[] = [];
   let i = 0;
   while (i < lines.length) {

@@ -9,7 +9,12 @@ import { overallProgress, useProgress } from "@/lib/progress";
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
-    setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    // Re-apply the saved choice after hydration: if React ever re-renders <html>, data-theme would be lost.
+    let t = document.documentElement.getAttribute("data-theme");
+    try { t = localStorage.getItem("ai-roadmap-theme") ?? t; } catch { /* ignore */ }
+    const next = t === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    setTheme(next);
   }, []);
   const flip = () => {
     const next = theme === "dark" ? "light" : "dark";
