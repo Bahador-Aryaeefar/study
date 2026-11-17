@@ -9,6 +9,7 @@ import ConceptCard from "./ConceptCard";
 import Checkpoint from "./Checkpoint";
 import { Rich } from "./Rich";
 import Scenarios from "./Scenarios";
+import Toc from "./Toc";
 import { scenariosFor } from "@/lib/scenarios";
 
 function TopicStudy({ t }: { t: Topic }) {
@@ -176,9 +177,7 @@ export default function PhaseStudy({ phaseId }: { phaseId: string }) {
     <main className="study">
       <aside className="toc" aria-label="On this page">
         <Link href={TRACKS[phase.track].href} className="toc-back">← Roadmap</Link>
-        <ul>
-          {toc.map((x) => <li key={x.id} className={x.sub ? "sub" : ""}><a href={`#${x.id}`}>{x.label}</a></li>)}
-        </ul>
+        <Toc items={toc} />
       </aside>
 
       <div className="study-main">
